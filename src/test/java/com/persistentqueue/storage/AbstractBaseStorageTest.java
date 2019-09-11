@@ -5,7 +5,7 @@ public abstract class AbstractBaseStorageTest {
     protected String name = "pbqtest";
     protected String dataFileExt = ".dat";
     protected String metaFileExt = ".meta";
-    protected int initialSize = 4096;
+    protected int initialDataFileSize = 4096;
 
     protected String oneKBText = "v8v6OIuhhALPKqA8W1ffq9ibnGHhJzfeG86PvtTjXFDfVYas5diIgqyTNyERCoiK3d0KVnvGjqcPthDjb9n8zkgXy9sg3ew30tcpQBRmNQ0YYjis86qVVlUco3MtKl8HMDYtEkdOhqdwzxB0j1boJH7E3xPDmm4atzLeVZaGviKeFecU8QiwDLQNZscb9wvEniPGeL8dRrd0hq39tjibBdvTnZuweAFX2jHaDWozhxPrbEEX9t9uk1n0aC1ocLz7RHASDVGswYIJm0wHeyzpOpV5k9ASGYATUkHArl2DXgLxhV3WgWES72wbqm0fSw2pN8h6rLHG18gPnQr0v7n4dx3DhzVvyZ2KvjFspoaKZhMBotpYdd0NatHTHN6oR4zAsx9u5nSFl0rIv18upGinWf0l1UyPH4pvPm1LIzqAldyaIsQ9GwWBGl0Hv4ARN0W7bQHamBgty4kfNOtBNDN9QKO9qszcylpzt67q5QG0gmpz8hZ87k6fGi3wsPGcnUDCBMp7YTXSS1ojYNg8BhS0WN1M412T5jPfb1v4HBPJwreNo7JqRGt0yNg6XsHVre5O9wsa5Fppp5d8WFqnPSERlSUShCisWbLXl3DglgvXJg2GVCZlaGNe5cRrkX2taHpNOw3lRUfLoHVZ1aABFmMaXu3vwsbsAxyvda3swFSJcFzC28LqlR4S1cMKRfHanLmgmm1bDM2cTbpeqFwfSuttIkky01F8XdGmbbel8GkbhdT1zgNY2oM6dmJ17ZsoFylfOK42qOf7E55ZCWcr1AMdceM41aGUnhshIjGwT6PTgvhM6CAn3hy7FMv4CMlomW7onwNfIxaLPFWLHfTWWdRKxv9G4bX2pMydKktvEjusCAtQNh7U1gNvtrFkDD622XSQTMp6KADRMHZzInQZIy0HkfJF2K6MloEOMOOqQ31SesYUneyjWxFd5D7intnIGnwgf5UjJb9G82gIEOAbt8AKavMy8qpgxuvXGXGjGowvIR5KFVQwva8YyJ1li2vvRzZe";
 
@@ -30,14 +30,14 @@ public abstract class AbstractBaseStorageTest {
     protected StorageSegment getFileSegment(int segmentId) {
         StorageSegment segment = null;
         segment = new FileSegment();
-        segment.init(this.path, this.name, this.dataFileExt, segmentId, this.initialSize);
+        segment.init(this.path, this.name, this.dataFileExt, segmentId, this.initialDataFileSize);
         return segment;
     }
 
     protected StorageSegment getMemorySegment(int segmentId) {
         StorageSegment segment = null;
         segment = new MemoryMappedSegment();
-        segment.init(this.path, this.name, this.dataFileExt, segmentId, this.initialSize);
+        segment.init(this.path, this.name, this.dataFileExt, segmentId, this.initialDataFileSize);
         return segment;
     }
 }

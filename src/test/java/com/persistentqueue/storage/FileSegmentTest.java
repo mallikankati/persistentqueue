@@ -13,10 +13,10 @@ public class FileSegmentTest extends AbstractBaseStorageTest {
             Assert.assertEquals("Path mismatch", this.path, segment.getPath());
             Assert.assertEquals("Name mismatch", this.name, segment.getName());
             Assert.assertEquals("File extension mismatch", this.dataFileExt, segment.getExtension());
-            Assert.assertEquals("File initial size mismatch", this.initialSize, segment.getLength());
+            Assert.assertEquals("File initial size mismatch", this.initialDataFileSize, segment.getLength());
             Assert.assertEquals("Segment id mismatch", 0, segment.getSegmentId());
             Assert.assertEquals("File current position mismatch", 0, segment.getCurrentPosition());
-            Assert.assertEquals("Remaining size mismatch", this.initialSize, segment.remaining(0));
+            Assert.assertEquals("Remaining size mismatch", this.initialDataFileSize, segment.remaining(0));
         } finally {
             segment.close(true);
         }
@@ -32,8 +32,8 @@ public class FileSegmentTest extends AbstractBaseStorageTest {
             segment.write(0, buff, 0, buff.length);
             int length = buff.length;
             byte[] tempBuff = new byte[length];
-            Assert.assertEquals("Remaining space mismatch after write", (this.initialSize - length), segment.remaining(length));
-            Assert.assertEquals("Remaining space should match to total space", (this.initialSize), segment.remaining(0));
+            Assert.assertEquals("Remaining space mismatch after write", (this.initialDataFileSize - length), segment.remaining(length));
+            Assert.assertEquals("Remaining space should match to total space", (this.initialDataFileSize), segment.remaining(0));
             Assert.assertEquals("Current position mismatch", length, segment.getCurrentPosition());
             Assert.assertEquals("Space Available should return true", true, segment.isSpaceAvailable(length));
             Assert.assertEquals("Space Available should return true", true, segment.isSpaceAvailable(3 * length));
@@ -57,8 +57,8 @@ public class FileSegmentTest extends AbstractBaseStorageTest {
             segment.close(false);
             segment = getFileSegment(0);
             segment.seekToPosition(length);
-            Assert.assertEquals("Remaining space mismatch after write", (this.initialSize - length), segment.remaining(length));
-            Assert.assertEquals("Remaining space should match to total space", (this.initialSize), segment.remaining(0));
+            Assert.assertEquals("Remaining space mismatch after write", (this.initialDataFileSize - length), segment.remaining(length));
+            Assert.assertEquals("Remaining space should match to total space", (this.initialDataFileSize), segment.remaining(0));
             Assert.assertEquals("Current position mismatch", length, segment.getCurrentPosition());
             Assert.assertEquals("Space Available should return true", true, segment.isSpaceAvailable(length));
             Assert.assertEquals("Space Available should return true", true, segment.isSpaceAvailable(3 * length));

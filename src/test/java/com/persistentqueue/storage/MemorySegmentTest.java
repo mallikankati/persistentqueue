@@ -13,10 +13,10 @@ public class MemorySegmentTest extends AbstractBaseStorageTest {
             Assert.assertEquals("memory mapped file path mismatch", this.path, segment.getPath());
             Assert.assertEquals("memory mapped file name mismatch", this.name, segment.getName());
             Assert.assertEquals("memory mapped file extension mismatch", this.dataFileExt, segment.getExtension());
-            Assert.assertEquals("memory mapped file initial size mismatch", this.initialSize, segment.getLength());
+            Assert.assertEquals("memory mapped file initial size mismatch", this.initialDataFileSize, segment.getLength());
             Assert.assertEquals("memory mapped Segment id mismatch", 0, segment.getSegmentId());
             Assert.assertEquals("memory mapped file current position mismatch", 0, segment.getCurrentPosition());
-            Assert.assertEquals("memory mapped file Remaining size mismatch", this.initialSize, segment.remaining(0));
+            Assert.assertEquals("memory mapped file Remaining size mismatch", this.initialDataFileSize, segment.remaining(0));
         } finally {
             segment.close(true);
         }
@@ -32,8 +32,8 @@ public class MemorySegmentTest extends AbstractBaseStorageTest {
             segment.write(0, buff, 0, buff.length);
             int length = buff.length;
             byte[] tempBuff = new byte[length];
-            Assert.assertEquals("memory mapped file remaining space mismatch after write", (this.initialSize - length), segment.remaining(length));
-            Assert.assertEquals("memory mapped file remaining space should match to total space", (this.initialSize), segment.remaining(0));
+            Assert.assertEquals("memory mapped file remaining space mismatch after write", (this.initialDataFileSize - length), segment.remaining(length));
+            Assert.assertEquals("memory mapped file remaining space should match to total space", (this.initialDataFileSize), segment.remaining(0));
             //TODO need to fix this check
            // Assert.assertEquals("memory mapped file current position mismatch", length, segment.getCurrentPosition());
             Assert.assertEquals("memory mapped file Space Available should return true", true, segment.isSpaceAvailable(length));
@@ -58,8 +58,8 @@ public class MemorySegmentTest extends AbstractBaseStorageTest {
             segment.close(false);
             segment = getMemorySegment(0);
             segment.seekToPosition(length);
-            Assert.assertEquals("memory mapped file remaining space mismatch after write", (this.initialSize - length), segment.remaining(length));
-            Assert.assertEquals("memory mapped file remaining space should match to total space", (this.initialSize), segment.remaining(0));
+            Assert.assertEquals("memory mapped file remaining space mismatch after write", (this.initialDataFileSize - length), segment.remaining(length));
+            Assert.assertEquals("memory mapped file remaining space should match to total space", (this.initialDataFileSize), segment.remaining(0));
             //TODO need to fix this
             //Assert.assertEquals("memory mapped file current position mismatch", length, segment.getCurrentPosition());
             Assert.assertEquals("memory mapped file space Available should return true", true, segment.isSpaceAvailable(length));
