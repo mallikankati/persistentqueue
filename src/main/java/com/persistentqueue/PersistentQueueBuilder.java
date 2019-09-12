@@ -1,5 +1,7 @@
 package com.persistentqueue;
 
+import com.persistentqueue.storage.StorageSegment;
+
 import java.util.function.Consumer;
 
 public class PersistentQueueBuilder<T> {
@@ -8,6 +10,7 @@ public class PersistentQueueBuilder<T> {
     public int fileSize;
     public boolean blocking = false;
     public Class<T> typeClass;
+    public StorageSegment.SegmentType segmentType;
 
     public PersistentQueueBuilder<T> with(Consumer<PersistentQueueBuilder<T>> builderFunc){
         builderFunc.accept(this);
@@ -16,7 +19,7 @@ public class PersistentQueueBuilder<T> {
 
     public PersistentQueue<T> build(){
         PersistentQueue<T> pq = new PersistentQueue<>(this.path, this.name, this.fileSize);
-        pq.init(this.typeClass);
+        pq.init(this.typeClass, this.segmentType);
         return pq;
     }
 }

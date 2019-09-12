@@ -1,11 +1,13 @@
 package com.persistentqueue;
 
 import com.persistentqueue.storage.AbstractBaseStorageTest;
+import com.persistentqueue.storage.StorageSegment;
 import com.persistentqueue.storage.utils.PersistentUtil;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 
@@ -18,6 +20,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
                     $.name = this.name;
                     $.fileSize = this.initialSize;
                     $.typeClass = typeClass;
+                   // $.segmentType = StorageSegment.SegmentType.FILE;
                 }).build();
         return pq;
     }
@@ -195,13 +198,39 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
         //this.initialSize = 2*1024*1024;
         PersistentQueue<Integer> pq = getPersistentQueue(Integer.class);
         try {
-            int totalElements = 250000;
+            int totalElements = 500000;
             List<Integer> list = new ArrayList<>();
             for (int i = 0; i < totalElements; i++) {
                 list.add(i);
             }
             pq.addAll(list);
             Assert.assertEquals("Total size mismatch", totalElements, pq.size());
+            for (int i = 0; i < totalElements; i++) {
+                int retrievedInt = pq.poll();
+                Assert.assertEquals("Multiple poll call fails results", i, retrievedInt);
+            }
+            Assert.assertEquals("Total size mismatch", 0, pq.size());
+        } finally {
+            pq.close();
+        }
+    }
+
+    @Test
+    public void testIterator(){
+        PersistentQueue<Integer> pq = getPersistentQueue(Integer.class);
+        try {
+            int totalElements = 600000;
+            for (int i = 0; i < totalElements; i++) {
+                pq.add(i);
+            }
+            Assert.assertEquals("Total size mismatch", totalElements, pq.size());
+            Iterator<Integer> it = pq.iterator();
+            int j = 0;
+            while(it.hasNext()){
+                int retrievedInt = it.next();
+                Assert.assertEquals("it.next() failed", j, retrievedInt);
+                j++;
+            }
             for (int i = 0; i < totalElements; i++) {
                 int retrievedInt = pq.poll();
                 Assert.assertEquals("Multiple poll call fails results", i, retrievedInt);

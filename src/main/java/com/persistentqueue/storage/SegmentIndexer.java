@@ -11,6 +11,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Logger;
 
 /**
  * Segment indexer manages metadata and read/write elements in the queue.
@@ -31,6 +32,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 2)Increase default metadata segment size
  */
 public class SegmentIndexer implements Iterable<byte[]> {
+
+    private static final Logger logger = Logger.getLogger(SegmentIndexer.class.getName());
 
     private static int VERSION = 1;
 
@@ -67,7 +70,7 @@ public class SegmentIndexer implements Iterable<byte[]> {
     /**
      * Default metadata segment size
      */
-    private static int DEFAULT_METADATA_SEG_SIZE = 4096;
+    private static int DEFAULT_METADATA_SEG_SIZE = 1024*1024;
 
     /**
      * Default data segment size.
@@ -235,8 +238,11 @@ public class SegmentIndexer implements Iterable<byte[]> {
         writeMetadataHeader();
         for (StorageSegment tempSegment : closeSegments) {
             int tempSegmentId = tempSegment.getSegmentId();
-            if (tempSegmentId != mainHeader.startSegmentId) {
+            if (tempSegmentId != mainHeader.startSegmentId
+                    && tempSegmentId != mainHeader.tailSegmentId) {
                 tempSegment.close(false);
+                logger.finest("start segid:" + mainHeader.startSegmentId + ", tail segid:" + mainHeader.tailSegmentId
+                        + ", close segid:" + tempSegmentId+", delete:" + false);
             }
         }
     }
@@ -251,6 +257,7 @@ public class SegmentIndexer implements Iterable<byte[]> {
     private Element writeElementToSegment(StorageSegment segment, int position, byte[] buff, int offset, int count,
                                           List<StorageSegment> closeSegments) {
         int remain = segment.remaining(position);
+        int segmentId = segment.getSegmentId();
         if (remain >= count) {
             segment.write(position, buff, offset, count);
             position += count;
@@ -273,7 +280,6 @@ public class SegmentIndexer implements Iterable<byte[]> {
                     currentOffset += remain;
                     currentRemainBytes -= remain;
                     segmentHeader.addSegment(segment.getSegmentId());
-                    //segment.close(false);
                     closeSegments.add(segment);
                 }
             }
@@ -306,6 +312,8 @@ public class SegmentIndexer implements Iterable<byte[]> {
                 if (tempSegmentId != mainHeader.startSegmentId) {
                     segmentHeader.removeSegment(tempSegmentId);
                     tempSegment.close(true);
+                    logger.finest("start segid:" + mainHeader.startSegmentId + ", tail segid:" + mainHeader.tailSegmentId
+                            + ", close segid:" + tempSegmentId+", delete:" + true);
                 }
             }
             writeMetadataHeader();
@@ -315,6 +323,8 @@ public class SegmentIndexer implements Iterable<byte[]> {
                 if (tempSegmentId != mainHeader.startSegmentId && tempSegmentId != mainHeader.tailSegmentId) {
                     //segmentHeader.removeSegment(tempSegmentId);
                     tempSegment.close(false);
+                    logger.finest("start segid:" + mainHeader.startSegmentId + ", tail segid:" + mainHeader.tailSegmentId
+                            + ", close segid:" + tempSegmentId+", delete:" + false);
                 }
             }
         }
@@ -472,7 +482,6 @@ public class SegmentIndexer implements Iterable<byte[]> {
         int currentIndex = 0;
         int currentPosition = mainHeader.startPosition;
         StorageSegment currentSegment = startSegment;
-        List<StorageSegment> dummyCloseSegments = new ArrayList<>();
         int currentTotalElements = getTotalElements();
 
         ElementIterator() {
@@ -496,8 +505,17 @@ public class SegmentIndexer implements Iterable<byte[]> {
             if (isEmpty()) {
                 throw new NoSuchElementException();
             }
+            List<StorageSegment> closeSegments = new ArrayList<>();
             Element element = readElementFromSegment(currentSegment, currentPosition,
-                    dummyCloseSegments, false);
+                    closeSegments, false);
+            for (StorageSegment tempSegment : closeSegments){
+                int tempSegmentId = tempSegment.getSegmentId();
+                if (startSegment.getSegmentId() != tempSegmentId &&
+                        tailSegment.getSegmentId() != tempSegmentId &&
+                        element.segment.getSegmentId() != tempSegmentId){
+                    tempSegment.close(false);
+                }
+            }
             this.currentIndex++;
             this.currentPosition = element.position;
             this.currentSegment = element.segment;
@@ -512,6 +530,9 @@ public class SegmentIndexer implements Iterable<byte[]> {
         }
     }
 
+    public void printStats(){
+
+    }
     private static class MainHeader {
         private int version = 1;
         private long totalElements;

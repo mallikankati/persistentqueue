@@ -5,6 +5,7 @@ import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import com.esotericsoftware.kryo.util.Pool;
 import com.persistentqueue.storage.SegmentIndexer;
+import com.persistentqueue.storage.StorageSegment;
 
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
@@ -93,9 +94,12 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
         this.dataSegmentSize = dataSegmentSize;
     }
 
-    public void init(Class<E> typeClass){
+    public void init(Class<E> typeClass, StorageSegment.SegmentType segmentType){
         this.genericType = typeClass;
         segmentIndexer = new SegmentIndexer();
+        if (segmentType != null){
+            segmentIndexer.setSegmentType(segmentType);
+        }
         segmentIndexer.initialize(this.path, this.name, this.dataSegmentSize);
     }
 
