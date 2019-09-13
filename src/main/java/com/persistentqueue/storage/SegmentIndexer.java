@@ -106,6 +106,11 @@ public class SegmentIndexer implements Iterable<byte[]> {
      */
     private AtomicInteger segmentCounter = new AtomicInteger(100);
 
+    /**
+     * To protect from multiple threads changing
+     */
+    private AtomicInteger count;
+
     public void setSegmentType(StorageSegment.SegmentType segmentType) {
         this.segmentType = segmentType;
     }
@@ -129,11 +134,12 @@ public class SegmentIndexer implements Iterable<byte[]> {
         this.path = path;
         this.name = name;
         this.initialSize = initialSize;
+        this.count = new AtomicInteger();
         metadataSegment = createAndOpenSegment(path, name, METADATA_SEGEMENT_EXT, -1,
                 DEFAULT_METADATA_SEG_SIZE);
         startSegment = tailSegment = createAndOpenSegment(path, name, DATA_SEGEMENT_EXT,
                 segmentCounter.getAndIncrement(), initialSize);
-        mainHeader.totalElements = 0;
+        mainHeader.totalElements = count.get();
         mainHeader.startSegmentId = startSegment.getSegmentId();
         mainHeader.startPosition = 0;
         mainHeader.tailSegmentId = 0;
@@ -194,7 +200,7 @@ public class SegmentIndexer implements Iterable<byte[]> {
     }
 
     public int getTotalElements() {
-        return (int) mainHeader.totalElements;
+        return this.count.get();
     }
 
     public int getTotalSegments() {
@@ -234,7 +240,7 @@ public class SegmentIndexer implements Iterable<byte[]> {
             tailSegment = element.segment;
         }
         mainHeader.tailPosition = element.position;
-        mainHeader.totalElements++;
+        mainHeader.totalElements = this.count.incrementAndGet();
         writeMetadataHeader();
         for (StorageSegment tempSegment : closeSegments) {
             int tempSegmentId = tempSegment.getSegmentId();
@@ -306,7 +312,7 @@ public class SegmentIndexer implements Iterable<byte[]> {
                 startSegment = element.segment;
             }
             mainHeader.startPosition = element.position;
-            mainHeader.totalElements--;
+            mainHeader.totalElements = this.count.decrementAndGet();
             for (StorageSegment tempSegment : closeSegmentList) {
                 int tempSegmentId = tempSegment.getSegmentId();
                 if (tempSegmentId != mainHeader.startSegmentId) {

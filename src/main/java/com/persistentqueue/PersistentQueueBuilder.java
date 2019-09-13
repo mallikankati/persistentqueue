@@ -18,8 +18,14 @@ public class PersistentQueueBuilder<T> {
     }
 
     public PersistentQueue<T> build(){
-        PersistentQueue<T> pq = new PersistentQueue<>(this.path, this.name, this.fileSize);
+        PersistentQueue<T> pq = null;
+        if (!blocking) {
+            pq = new PersistentQueue<>(this.path, this.name, this.fileSize);
+        } else {
+            pq = new PersistentBlockingQueue<>(this.path, this.name, this.fileSize);
+        }
         pq.init(this.typeClass, this.segmentType);
         return pq;
     }
+
 }

@@ -1,14 +1,14 @@
 package com.persistentqueue;
 
 import com.persistentqueue.storage.AbstractBaseStorageTest;
-import com.persistentqueue.storage.StorageSegment;
-import com.persistentqueue.storage.utils.PersistentUtil;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 
 public class PersistentQueueTest extends AbstractBaseStorageTest {
@@ -238,6 +238,75 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
             Assert.assertEquals("Total size mismatch", 0, pq.size());
         } finally {
             pq.close();
+        }
+    }
+
+    @Test
+    public void testCustomObjects(){
+        PersistentQueue<Record> pq = getPersistentQueue(Record.class);
+        try {
+            int totalElements = 10;
+            for (int i = 0; i<totalElements; i++) {
+                Record r = Record.createRecord(i);
+                pq.add(r);
+            }
+            Assert.assertEquals("Total size mismatch", totalElements, pq.size());
+            for (int i = 0; i<totalElements; i++) {
+                Record r = Record.createRecord(i);
+                Record retrievedRecord = pq.poll();
+                Assert.assertEquals("Records retrieved mismatch", true, r.compare(retrievedRecord));
+            }
+            Assert.assertEquals("Total size mismatch", 0, pq.size());
+        } finally {
+            pq.close();
+        }
+    }
+
+    private static class Record {
+        private String name;
+        private int value;
+        private List<String>  list = new ArrayList<>();
+        private Map<String, String> map = new HashMap<>();
+
+        static Record createRecord(int index){
+            Record r= new Record();
+            r.name = "Testname " + index;
+            r.value = 100;
+            List<String> list = new ArrayList<>();
+            list.add("String " + index);
+            list.add("String " + index);
+            r.list = list;
+            Map<String, String> map = new HashMap<>();
+            map.put("Key" + index, "Value" + index);
+            map.put("Key" + index +1, "Value" + index +1);
+            r.map = map;
+            return r;
+        }
+
+        boolean compare(Record r){
+            boolean status = false;
+            if (this.name.equalsIgnoreCase(r.name) &&
+                    this.value == r.value &&
+                    this.list.size() == r.list.size() &&
+                    this.map.size() == r.map.size() &&
+                    compareCollections(r.list, r.map)){
+                status = true;
+            }
+            return status;
+        }
+
+        boolean compareCollections(List<String> list, Map<String, String> map){
+            for (int i = 0; i < list.size(); i++){
+                if (!this.list.get(i).equalsIgnoreCase(list.get(i))){
+                    return false;
+                }
+            }
+            for (String key : map.keySet()){
+                if (!this.map.get(key).equalsIgnoreCase(map.get(key))){
+                    return false;
+                }
+            }
+            return true;
         }
     }
 }
