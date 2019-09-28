@@ -170,17 +170,18 @@ public class MemoryMappedSegment extends AbstractStorageSegment {
 
     @Override
     public void close() throws IOException {
-        if (isOpen()) {
-            synchronized (this) {
+        synchronized (this) {
+            if (isOpen()) {
+
                 this.threadLocalBuffer.close();
                 this.open = false;
                 this.threadLocalBuffer = null;
             }
+            if (isDelete()) {
+                deleteFile();
+            }
+            this.closed = true;
         }
-        if (isDelete()) {
-            deleteFile();
-        }
-        this.closed = true;
     }
 
     private class ThreadLocalBuffer extends ThreadLocal<ByteBuffer>{

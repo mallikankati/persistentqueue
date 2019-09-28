@@ -3,6 +3,7 @@ package com.persistentqueue.storage;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 
 
 /**
@@ -13,7 +14,7 @@ public class FileSegment extends AbstractStorageSegment {
     /**
      * File backed by this segment
      */
-    private RandomAccessFile raf;
+    private FileChannel fileChannel;
 
     public FileSegment() {
     }
@@ -32,7 +33,8 @@ public class FileSegment extends AbstractStorageSegment {
     public void init(String path, String name, String ext, int segmentId, int initialLength) {
         FileSegment fileSegment = null;
         try {
-            raf = initializeFile(path, name, ext, segmentId, initialLength);
+            RandomAccessFile raf = initializeFile(path, name, ext, segmentId, initialLength);
+            fileChannel = raf.getChannel();
             //In case segment cached and close and create again on same instance
             closed = false;
             open = true;
@@ -53,9 +55,12 @@ public class FileSegment extends AbstractStorageSegment {
             throw new RuntimeException("segment closed before reading");
         }
         try {
-            raf.seek(position);
-            buff = new byte[count];
-            raf.readFully(buff, offset, count);
+            fileChannel.position(position);
+            ByteBuffer buffer = ByteBuffer.allocate(count);
+            do {
+                fileChannel.read(buffer);
+            } while (buffer.hasRemaining());
+            buff = buffer.array();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -68,9 +73,12 @@ public class FileSegment extends AbstractStorageSegment {
      */
     public void write(long position, byte[] buff) {
         try {
-            if (raf != null && position + buff.length <= initialLength) {
-                raf.seek(position);
-                raf.write(buff, 0, buff.length);
+            if (fileChannel != null && position + buff.length <= initialLength) {
+                fileChannel.position(position);
+                ByteBuffer buffer = ByteBuffer.wrap(buff);
+                do {
+                    fileChannel.write(buffer);
+                } while (buffer.hasRemaining());
             } else {
                 throw new RuntimeException("Exceeded initial file length to write");
             }
@@ -92,7 +100,7 @@ public class FileSegment extends AbstractStorageSegment {
             if (closed) {
                 throw new RuntimeException("segment closed");
             }
-            if (raf.getFilePointer() + dataLength <= initialLength) {
+            if (fileChannel.position() + dataLength <= initialLength) {
                 status = true;
             }
         } catch (Exception e) {
@@ -104,7 +112,7 @@ public class FileSegment extends AbstractStorageSegment {
     @Override
     public void seekToPosition(int position) {
         try {
-            raf.seek(position);
+            fileChannel.position(position);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -114,7 +122,7 @@ public class FileSegment extends AbstractStorageSegment {
     public int getCurrentPosition() {
         int pointer = 0;
         try {
-            pointer = (int) raf.getFilePointer();
+            pointer = (int) fileChannel.position();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -134,12 +142,12 @@ public class FileSegment extends AbstractStorageSegment {
 
     @Override
     public boolean isDirty() {
-        return false;
+        return this.dirty;
     }
 
     @Override
     public void setDirty(boolean dirty) {
-
+        this.dirty = dirty;
     }
 
     @Override
@@ -159,8 +167,8 @@ public class FileSegment extends AbstractStorageSegment {
     public void close() throws IOException {
         try {
             if (isOpen()) {
-                if (raf != null) {
-                    raf.close();
+                if (fileChannel != null) {
+                    fileChannel.close();
                     closed = true;
                 }
                 open = false;

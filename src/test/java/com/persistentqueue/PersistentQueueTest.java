@@ -48,7 +48,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
     public void testAddWithString() {
         PersistentQueue<String> pq = getPersistentQueue(String.class);
         try {
-            String prefix = fourKBText;
+            String prefix = oneKBText;
             int totalElements = 10;
             for (int i = 0; i < totalElements; i++) {
                 pq.add(prefix + i);

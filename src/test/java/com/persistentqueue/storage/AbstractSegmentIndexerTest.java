@@ -27,7 +27,8 @@ public abstract class AbstractSegmentIndexerTest extends AbstractBaseStorageTest
             byte[] tempBuff = indexer.readFromSegment();
             String tempStr = new String(tempBuff);
             Assert.assertEquals("Expected string not matched", oneKBText, tempStr);
-            Assert.assertEquals("Total elements mismatch after read", 1, indexer.getTotalElements());
+            Assert.assertEquals("Total elements mismatch after read", 0, indexer.getTotalElements());
+            Assert.assertEquals("Total elements mismatch after read", true, indexer.isEmpty());
         } finally {
             indexer.close(true);
         }

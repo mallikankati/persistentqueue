@@ -248,7 +248,6 @@ public class SegmentIndexer implements Iterable<byte[]> {
             }
             StorageSegment segment = dataStorageManager.acquireSegment(this.currentDataSegmentId);
             segment.write(this.currentDataSegmentOffset, buff);
-            this.currentDataSegmentOffset += buff.length;
             segment.setDirty(true);
 
             //update data index segment
@@ -261,6 +260,8 @@ public class SegmentIndexer implements Iterable<byte[]> {
             buffer.putInt(buff.length);
             buffer.putLong(System.currentTimeMillis());
             dataIndexSegment.setDirty(true);
+
+            this.currentDataSegmentOffset += buff.length;
             this.tailPositionCounter.incrementAndGet();
 
             //update metadata segment
@@ -435,16 +436,16 @@ public class SegmentIndexer implements Iterable<byte[]> {
         private byte[] convertToBytes() {
             byte[] buff = new byte[DEFAULT_METADATA_HEADER_LENGTH];
             PersistentUtil.writeInt(buff, 0, version);
-            PersistentUtil.writeLong(buff, 8, startPosition);
-            PersistentUtil.writeLong(buff, 16, tailPosition);
+            PersistentUtil.writeLong(buff, 4, startPosition);
+            PersistentUtil.writeLong(buff, 12, tailPosition);
 
             return buff;
         }
 
         private void readBytes(byte[] buff) {
             version = PersistentUtil.readInt(buff, 0);
-            startPosition = PersistentUtil.readLong(buff, 8);
-            tailPosition = PersistentUtil.readLong(buff, 16);
+            startPosition = PersistentUtil.readLong(buff, 4);
+            tailPosition = PersistentUtil.readLong(buff, 12);
         }
 
         public String toString() {
