@@ -3,18 +3,24 @@ package com.persistentqueue;
 import com.persistentqueue.storage.AbstractBaseStorageTest;
 import org.junit.Assert;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Queue;
 
 public class PersistentQueueTest extends AbstractBaseStorageTest {
 
+    private static final Logger logger = LoggerFactory.getLogger(PersistentQueueTest.class);
+
     private <T> PersistentQueue<T> getPersistentQueue(Class<T> typeClass) {
-        PersistentQueue<T> pq = new PersistentQueueBuilder<T>()
+        /*PersistentQueue<T> pq = new PersistentQueueBuilder<T>()
                 .with($ -> {
                     $.path = this.path;
                     $.name = this.name;
@@ -22,6 +28,13 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
                     $.typeClass = typeClass;
                    // $.segmentType = StorageSegment.SegmentType.FILE;
                 }).build();
+        */
+        PersistentQueue<T> pq = new PersistentQueueBuilder<T>()
+                .path(this.path)
+                .name(this.name)
+                .fileSize(this.initialSize)
+                .typeClass(typeClass)
+                .build();
         return pq;
     }
 
@@ -53,6 +66,8 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
                 Assert.assertEquals("Multiple poll call fails results", str, tempStr);
             }
             Assert.assertEquals("Total size mismatch after poll", 0, pq.size());
+        } catch (Exception e) {
+            logger.info(e.getMessage(), e);
         } finally {
             pq.close();
         }
@@ -216,17 +231,18 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
     }
 
     @Test
-    public void testIterator(){
+    public void testIterator() {
+        this.initialSize = 5 * 1024 * 1024;
         PersistentQueue<Integer> pq = getPersistentQueue(Integer.class);
         try {
-            int totalElements = 600000;
+            int totalElements = 500000;
             for (int i = 0; i < totalElements; i++) {
                 pq.add(i);
             }
             Assert.assertEquals("Total size mismatch", totalElements, pq.size());
             Iterator<Integer> it = pq.iterator();
             int j = 0;
-            while(it.hasNext()){
+            while (it.hasNext()) {
                 int retrievedInt = it.next();
                 Assert.assertEquals("it.next() failed", j, retrievedInt);
                 j++;
@@ -242,16 +258,39 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
     }
 
     @Test
-    public void testCustomObjects(){
+    public void testSimpleJdkQueue() {
+        Queue<Integer> queue = new LinkedList<>();
+        int totalElements = 500000;
+        for (int i = 0; i < totalElements; i++) {
+            queue.add(i);
+        }
+        Assert.assertEquals("Total size mismatch", totalElements, queue.size());
+        Iterator<Integer> it = queue.iterator();
+        int j = 0;
+        while (it.hasNext()) {
+            int retrievedInt = it.next();
+            Assert.assertEquals("it.next() failed", j, retrievedInt);
+            j++;
+        }
+        for (int i = 0; i < totalElements; i++) {
+            int retrievedInt = queue.poll();
+            Assert.assertEquals("Multiple poll call fails results", i, retrievedInt);
+        }
+        Assert.assertEquals("Total size mismatch", 0, queue.size());
+
+    }
+
+    @Test
+    public void testCustomObjects() {
         PersistentQueue<Record> pq = getPersistentQueue(Record.class);
         try {
             int totalElements = 10;
-            for (int i = 0; i<totalElements; i++) {
+            for (int i = 0; i < totalElements; i++) {
                 Record r = Record.createRecord(i);
                 pq.add(r);
             }
             Assert.assertEquals("Total size mismatch", totalElements, pq.size());
-            for (int i = 0; i<totalElements; i++) {
+            for (int i = 0; i < totalElements; i++) {
                 Record r = Record.createRecord(i);
                 Record retrievedRecord = pq.poll();
                 Assert.assertEquals("Records retrieved mismatch", true, r.compare(retrievedRecord));
@@ -265,11 +304,11 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
     private static class Record {
         private String name;
         private int value;
-        private List<String>  list = new ArrayList<>();
+        private List<String> list = new ArrayList<>();
         private Map<String, String> map = new HashMap<>();
 
-        static Record createRecord(int index){
-            Record r= new Record();
+        static Record createRecord(int index) {
+            Record r = new Record();
             r.name = "Testname " + index;
             r.value = 100;
             List<String> list = new ArrayList<>();
@@ -278,31 +317,31 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
             r.list = list;
             Map<String, String> map = new HashMap<>();
             map.put("Key" + index, "Value" + index);
-            map.put("Key" + index +1, "Value" + index +1);
+            map.put("Key" + index + 1, "Value" + index + 1);
             r.map = map;
             return r;
         }
 
-        boolean compare(Record r){
+        boolean compare(Record r) {
             boolean status = false;
             if (this.name.equalsIgnoreCase(r.name) &&
                     this.value == r.value &&
                     this.list.size() == r.list.size() &&
                     this.map.size() == r.map.size() &&
-                    compareCollections(r.list, r.map)){
+                    compareCollections(r.list, r.map)) {
                 status = true;
             }
             return status;
         }
 
-        boolean compareCollections(List<String> list, Map<String, String> map){
-            for (int i = 0; i < list.size(); i++){
-                if (!this.list.get(i).equalsIgnoreCase(list.get(i))){
+        boolean compareCollections(List<String> list, Map<String, String> map) {
+            for (int i = 0; i < list.size(); i++) {
+                if (!this.list.get(i).equalsIgnoreCase(list.get(i))) {
                     return false;
                 }
             }
-            for (String key : map.keySet()){
-                if (!this.map.get(key).equalsIgnoreCase(map.get(key))){
+            for (String key : map.keySet()) {
+                if (!this.map.get(key).equalsIgnoreCase(map.get(key))) {
                     return false;
                 }
             }

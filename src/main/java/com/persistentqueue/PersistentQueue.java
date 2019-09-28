@@ -108,7 +108,7 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
     /*
       // Pool constructor arguments: thread safe, soft references, maximum capacity
      */
-    private Pool<Kryo> serializePool = new Pool<Kryo>(true, false,
+    protected Pool<Kryo> serializePool = new Pool<Kryo>(true, false,
             Runtime.getRuntime().availableProcessors()) {
         @Override
         protected Kryo create() {
@@ -116,7 +116,7 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
         }
     };
 
-    private Pool<Kryo> deserializePool = new Pool<Kryo>(true, false,
+    protected Pool<Kryo> deserializePool = new Pool<Kryo>(true, false,
             Runtime.getRuntime().availableProcessors()) {
         @Override
         protected Kryo create() {
@@ -154,20 +154,21 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
     @Override
     public boolean offer(E e) {
         byte[] buff = serialize(e);
-        segmentIndexer.writeToSegment(buff, 0, buff.length);
+        segmentIndexer.writeToSegment(buff);
         return true;
     }
 
     @Override
     public E poll() {
-        byte[] buff = segmentIndexer.readFromSegment(true);
+        byte[] buff = segmentIndexer.readFromSegment();
         E e = deserialize(buff);
         return e;
     }
 
     @Override
     public E peek() {
-        byte[] buff = segmentIndexer.readFromSegment(false);
+        long currentStartIndex = segmentIndexer.getStartIndex();
+        byte[] buff = segmentIndexer.readElementFromSegment(currentStartIndex);
         E e = deserialize(buff);
         return e;
     }

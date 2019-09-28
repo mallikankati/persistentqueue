@@ -1,5 +1,6 @@
 package com.persistentqueue.storage;
 
+import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -14,13 +15,11 @@ import java.nio.channels.FileChannel;
 public class MemoryMappedSegment extends AbstractStorageSegment {
 
     /**
-     * MappedByteBuffer backed by this segment
+     * ThreadLocal MappedByteBuffer backed by this segment
      */
-    private MappedByteBuffer mappedByteBuffer;
+    //private MappedByteBuffer mappedByteBuffer;
+    private ThreadLocalBuffer threadLocalBuffer;
 
-    private boolean closed =false;
-
-    private boolean open = false;
     @Override
     public boolean isOpen() {
         return this.open;
@@ -36,7 +35,8 @@ public class MemoryMappedSegment extends AbstractStorageSegment {
         RandomAccessFile raf = null;
         try {
             raf = initializeFile(path, name, ext, segmentId, initialLength);
-            this.mappedByteBuffer = raf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, initialLength);
+             MappedByteBuffer mappedByteBuffer = raf.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, initialLength);
+             this.threadLocalBuffer = new ThreadLocalBuffer(mappedByteBuffer);
             //In case segment cached and reused same object
             this.closed = false;
             this.open = true;
@@ -53,24 +53,38 @@ public class MemoryMappedSegment extends AbstractStorageSegment {
     }
 
     @Override
-    public void read(long position, byte[] buff, int offset, int count) {
-        this.mappedByteBuffer.position((int) position);
-        this.mappedByteBuffer.get(buff, offset, count);
+    public byte[] read(long position, int offset, int count) {
+        ByteBuffer byteBuffer = this.threadLocalBuffer.get();
+        byte[] buff = null;
+        byteBuffer.position((int) position);
+        buff = new byte[count];
+        byteBuffer.get(buff, 0, count);
+        return buff;
     }
 
     @Override
-    public void write(long position, byte[] buff, int offset, int count) {
-        this.mappedByteBuffer.position((int) position);
-        this.mappedByteBuffer.put(buff, offset, count);
+    public void write(long position, byte[] buff) {
+        ByteBuffer byteBuffer = this.threadLocalBuffer.get();
+        byteBuffer.position((int) position);
+        byteBuffer.put(buff);
+    }
+
+    @Override
+    public ByteBuffer getByteBuffer(long position)
+    {
+        ByteBuffer byteBuffer = this.threadLocalBuffer.get();
+        byteBuffer.position((int) position);
+        return byteBuffer;
     }
 
     @Override
     public boolean isSpaceAvailable(int dataLength) {
         boolean status = false;
-        if (this.closed){
+        if (this.closed) {
             throw new RuntimeException("Segment closed");
         }
-        if (this.mappedByteBuffer.remaining() > dataLength){
+        ByteBuffer byteBuffer = this.threadLocalBuffer.get();
+        if (byteBuffer.remaining() > dataLength) {
             status = true;
         }
         return status;
@@ -78,30 +92,44 @@ public class MemoryMappedSegment extends AbstractStorageSegment {
 
     @Override
     public void seekToPosition(int position) {
-        this.mappedByteBuffer.position(position);
+        ByteBuffer byteBuffer = this.threadLocalBuffer.get();
+        byteBuffer.position(position);
     }
 
     @Override
     public int getCurrentPosition() {
-        return this.mappedByteBuffer.position();
+        ByteBuffer byteBuffer = this.threadLocalBuffer.get();
+        return byteBuffer.position();
     }
 
     @Override
     public int remaining(int position) {
-        this.mappedByteBuffer.position(position);
-        return this.mappedByteBuffer.remaining();
+        int remaining = 0;
+        ByteBuffer byteBuffer = this.threadLocalBuffer.get();
+        byteBuffer.position(position);
+        remaining = byteBuffer.remaining();
+
+        return remaining;
     }
 
     @Override
-    public void close(boolean delete) {
-        if (isOpen()) {
-            closeDirectBuffer(this.mappedByteBuffer);
-            this.open = false;
-        }
-        if (delete){
-            deleteFile();
-        }
-        this.closed = true;
+    public boolean isDirty() {
+        return this.dirty;
+    }
+
+    @Override
+    public void setDirty(boolean dirty) {
+        this.dirty = dirty;
+    }
+
+    @Override
+    public boolean isDelete() {
+        return this.delete;
+    }
+
+    @Override
+    public void setDelete(boolean delete) {
+        this.delete = delete;
     }
 
     private static void closeDirectBuffer(ByteBuffer cb) {
@@ -135,8 +163,46 @@ public class MemoryMappedSegment extends AbstractStorageSegment {
                 Object theUnsafe = theUnsafeField.get(null);
                 clean.invoke(theUnsafe, cb);
             }
-        } catch (Exception ex) {
+        } catch (Exception ignore) {
         }
         cb = null;
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (isOpen()) {
+            synchronized (this) {
+                this.threadLocalBuffer.close();
+                this.open = false;
+                this.threadLocalBuffer = null;
+            }
+        }
+        if (isDelete()) {
+            deleteFile();
+        }
+        this.closed = true;
+    }
+
+    private class ThreadLocalBuffer extends ThreadLocal<ByteBuffer>{
+        private ByteBuffer byteBuffer;
+
+        public ByteBuffer getBuffer(){
+            return this.byteBuffer;
+        }
+
+        ThreadLocalBuffer(ByteBuffer byteBuffer){
+            this.byteBuffer = byteBuffer;
+        }
+
+        @Override
+        protected ByteBuffer initialValue() {
+            return this.byteBuffer.duplicate();
+        }
+
+        private void close(){
+            MappedByteBuffer buffer = (MappedByteBuffer)byteBuffer ;
+            buffer.force();
+            closeDirectBuffer(byteBuffer);
+        }
     }
 }

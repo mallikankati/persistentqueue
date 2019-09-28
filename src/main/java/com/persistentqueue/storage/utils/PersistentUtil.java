@@ -1,5 +1,9 @@
 package com.persistentqueue.storage.utils;
 
+import java.util.Collection;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
+
 public final class PersistentUtil {
 
     /**
@@ -68,5 +72,49 @@ public final class PersistentUtil {
         val += (buff[offset + 6] & 0xFF) << 8;
         val += (buff[offset + 7] & 0xFF);
         return val;
+    }
+
+    /**
+     * Utility method to drain a queue
+     *
+     * @param q
+     * @param buff
+     * @param numElements
+     * @param timeout
+     * @param timeUnit
+     * @param <T>
+     * @return
+     * @throws InterruptedException
+     */
+    public static <T> int drain(BlockingQueue<T> q,
+                                Collection<? super T> buff,
+                                int numElements,
+                                long timeout,
+                                TimeUnit timeUnit) throws InterruptedException {
+        int count = 0;
+        if (buff == null) {
+            throw new NullPointerException();
+        }
+        long totalWaitTime = System.nanoTime() + timeUnit.toNanos(timeout);
+        while (count < numElements) {
+            count += q.drainTo(buff, numElements - count);
+            if (count < numElements) {
+                T t = q.poll(totalWaitTime - System.nanoTime(), TimeUnit.NANOSECONDS);
+                if (t == null) {
+                    break;
+                }
+                buff.add(t);
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public static void sleep(long timeInMillis) {
+        try {
+            Thread.sleep(timeInMillis);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }

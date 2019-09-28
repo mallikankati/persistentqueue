@@ -32,6 +32,14 @@ public abstract class AbstractStorageSegment implements StorageSegment {
 
     protected String fullPath;
 
+    protected boolean closed = false;
+
+    protected boolean open = false;
+
+    protected boolean delete = false;
+
+    protected boolean dirty = false;
+
     protected RandomAccessFile initializeFile(String path, String name, String ext,
                                               int segmentId, int initialLength) throws IOException {
         File file = null;

@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -17,6 +18,11 @@ import java.util.concurrent.locks.ReentrantLock;
  * @param <E>
  */
 public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements BlockingQueue<E> {
+
+    /**
+     * Managing the size of the queue external to the
+     */
+    private final AtomicInteger count = new AtomicInteger();
 
     /**
      * Capacity is not specified, uses this value to guard to get unbounded
@@ -108,25 +114,29 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
     }
 
     @Override
+    public int size() {
+        return this.count.get();
+    }
+
+    @Override
     public void put(E e) throws InterruptedException {
         if (e == null) throw new NullPointerException();
-        int count = -1;
+        int c = -1;
         final ReentrantLock putLock = this.putLock;
         putLock.lockInterruptibly();
         try {
-            count = size();
-            while (count == capacity) {
+            while (count.get() == capacity) {
                 notFull.await();
             }
             super.offer(e);
-            count = size();
-            if (count < capacity) {
+            c = count.getAndIncrement();
+            if (c + 1 < capacity) {
                 notFull.signal();
             }
         } finally {
             putLock.unlock();
         }
-        if (count == 0) {
+        if (c == 0) {
             signalNotEmpty();
         }
     }
@@ -135,26 +145,25 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
     public boolean offer(E e, long timeout, TimeUnit unit) throws InterruptedException {
         if (e == null) throw new NullPointerException();
         long nanos = unit.toNanos(timeout);
-        int count = -1;
+        int c = -1;
         final ReentrantLock putLock = this.putLock;
         putLock.lockInterruptibly();
         try {
-            count = size();
-            while (count == capacity) {
+            while (count.get() == capacity) {
                 if (nanos <= 0) {
                     return false;
                 }
                 nanos = notFull.awaitNanos(nanos);
             }
             super.offer(e);
-            count = size();
-            if (count < capacity) {
+            c = count.getAndIncrement();
+            if (c + 1 < capacity) {
                 notFull.signal();
             }
         } finally {
             putLock.unlock();
         }
-        if (count == 0) {
+        if (c == 0) {
             signalNotEmpty();
         }
         return true;
@@ -163,23 +172,23 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
     @Override
     public E take() throws InterruptedException {
         E e;
-        int count = -1;
+        final AtomicInteger count = this.count;
+        int c = -1;
         final ReentrantLock takeLock = this.takeLock;
         takeLock.lockInterruptibly();
         try {
-            count = size();
-            while (count == 0) {
+            while (count.get() == 0) {
                 notEmpty.await();
             }
             e = super.poll();
-            count = size();
-            if (count > 1) {
+            c = count.getAndDecrement();
+            if (c > 1) {
                 notEmpty.signal();
             }
         } finally {
             takeLock.unlock();
         }
-        if (count == capacity) {
+        if (c == capacity) {
             signalNotFull();
         }
         return e;
@@ -187,27 +196,26 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
 
     @Override
     public E poll() {
-        int count = size();
-        if (count == 0) {
+        final AtomicInteger count = this.count;
+        if (count.get() == 0) {
             return null;
         }
-        count = -1;
+        int c = -1;
         E e = null;
         final ReentrantLock takeLock = this.takeLock;
         takeLock.lock();
         try {
-            count = size();
-            if (count > 0) {
+            if (count.get() > 0) {
                 e = super.poll();
-                count = size();
-                if (count > 0) {
+                c = count.getAndDecrement();
+                if (c > 0) {
                     notEmpty.signal();
                 }
             }
         } finally {
             takeLock.unlock();
         }
-        if (count == capacity) {
+        if (c == capacity) {
             signalNotFull();
         }
         return e;
@@ -216,27 +224,27 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
     @Override
     public E poll(long timeout, TimeUnit unit) throws InterruptedException {
         E e = null;
-        int count = -1;
+        final AtomicInteger count = this.count;
+        int c = -1;
         long nanos = unit.toNanos(timeout);
         final ReentrantLock takeLock = this.takeLock;
         takeLock.lockInterruptibly();
         try {
-            count = size();
-            while (count == 0) {
+            while (count.get() == 0) {
                 if (nanos <= 0) {
                     return null;
                 }
                 nanos = notEmpty.awaitNanos(nanos);
             }
             e = super.poll();
-            count = size();
-            if (count >= 1) {
+            c = count.getAndDecrement();
+            if (c > 1) {
                 notEmpty.signal();
             }
         } finally {
             takeLock.unlock();
         }
-        if (count == capacity) {
+        if (c == capacity) {
             signalNotFull();
         }
         return e;
@@ -245,35 +253,32 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
     @Override
     public boolean offer(E e) {
         if (e == null) throw new NullPointerException();
-        int count = size();
-        if (count == capacity) {
+        final AtomicInteger count = this.count;
+        if (count.get() == capacity)
             return false;
-        }
-        count = -1;
+        int c = -1;
         final ReentrantLock putLock = this.putLock;
         putLock.lock();
         try {
-            count = size();
-            if (count < capacity) {
+            if (count.get() < capacity) {
                 super.offer(e);
-                count = size();
-                if (count < capacity) {
+                c = count.getAndIncrement();
+                if (c + 1 < capacity) {
                     notFull.signal();
                 }
             }
         } finally {
             putLock.unlock();
         }
-        if (count == 0) {
+        if (c == 0) {
             signalNotEmpty();
         }
-        return count >= 0;
+        return c >= 0;
     }
 
     @Override
     public E peek() {
-        int count = size();
-        if (count == 0) {
+        if (count.get() == 0) {
             return null;
         }
         E e = null;
@@ -292,6 +297,9 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
         fullyLock();
         try {
             super.clear();
+            if (count.getAndSet(0) == capacity) {
+                notFull.signal();
+            }
         } finally {
             fullyUnlock();
         }
@@ -321,16 +329,19 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
         final ReentrantLock takeLock = this.takeLock;
         takeLock.lock();
         boolean signalNotFull = false;
+        int i = 0;
         try {
-            int n = Math.min(size(), maxElements);
-            int i = 0;
+            int n = Math.min(count.get(), maxElements);
             try {
                 while (i < n) {
-                    c.add(super.poll());
+                    E e = super.poll();
+                    c.add(e);
                     i++;
                 }
             } finally {
-                signalNotFull = (size() - i) == capacity;
+                if (i > 0) {
+                    signalNotFull = count.getAndAdd(-i) == capacity;
+                }
             }
         } finally {
             takeLock.unlock();
@@ -338,7 +349,7 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
                 signalNotFull();
             }
         }
-        return 0;
+        return i;
     }
 
     @Override
@@ -346,8 +357,9 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
         return new BlockingQueueItr();
     }
 
-    private class BlockingQueueItr implements Iterator<E>{
+    private class BlockingQueueItr implements Iterator<E> {
         Iterator<E> it = new PersistentQueueIterator();
+
         @Override
         public boolean hasNext() {
             return it.hasNext();
@@ -366,11 +378,21 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
         @Override
         public void remove() {
             fullyLock();
-            try{
+            try {
                 it.remove();
             } finally {
                 fullyUnlock();
             }
         }
+    }
+
+    @Override
+    public boolean remove(Object o) {
+        throw new RuntimeException("Not implemented");
+    }
+
+    @Override
+    public boolean contains(Object o) {
+        throw new RuntimeException("Not implemented");
     }
 }

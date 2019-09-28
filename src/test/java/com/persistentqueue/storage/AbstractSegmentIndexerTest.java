@@ -22,9 +22,9 @@ public abstract class AbstractSegmentIndexerTest extends AbstractBaseStorageTest
         SegmentIndexer indexer = getIndexer();
         try {
             byte[] buff = oneKBText.getBytes();
-            indexer.writeToSegment(buff, 0, buff.length);
+            indexer.writeToSegment(buff);
             Assert.assertEquals("Total elements mismatch after write", 1, indexer.getTotalElements());
-            byte[] tempBuff = indexer.readFromSegment(false);
+            byte[] tempBuff = indexer.readFromSegment();
             String tempStr = new String(tempBuff);
             Assert.assertEquals("Expected string not matched", oneKBText, tempStr);
             Assert.assertEquals("Total elements mismatch after read", 1, indexer.getTotalElements());
@@ -38,16 +38,16 @@ public abstract class AbstractSegmentIndexerTest extends AbstractBaseStorageTest
         SegmentIndexer indexer = getIndexer();
         try {
             byte[] buff = oneKBText.getBytes();
-            indexer.writeToSegment(buff, 0, buff.length);
+            indexer.writeToSegment(buff);
             Assert.assertEquals("Total elements mismatch after write", 1, indexer.getTotalElements());
             buff = twoKBText.getBytes();
-            indexer.writeToSegment(buff, 0, buff.length);
+            indexer.writeToSegment(buff);
             Assert.assertEquals("Total elements mismatch after second write", 2, indexer.getTotalElements());
-            byte[] tempBuff = indexer.readFromSegment(true);
+            byte[] tempBuff = indexer.readFromSegment();
             String tempStr = new String(tempBuff);
             Assert.assertEquals("Expected 1KB string not matched", oneKBText, tempStr);
             Assert.assertEquals("Total elements mismatch after first read", 1, indexer.getTotalElements());
-            tempBuff = indexer.readFromSegment(true);
+            tempBuff = indexer.readFromSegment();
             tempStr = new String(tempBuff);
             Assert.assertEquals("Expected 2KB string not matched", twoKBText, tempStr);
             Assert.assertEquals("Total elements mismatch after second read", 0, indexer.getTotalElements());
@@ -67,13 +67,13 @@ public abstract class AbstractSegmentIndexerTest extends AbstractBaseStorageTest
             for (int i = 0; i < totalElements; i++) {
                 String temp = prefix + i;
                 buff = temp.getBytes();
-                indexer.writeToSegment(buff, 0, buff.length);
+                indexer.writeToSegment(buff);
             }
             Assert.assertEquals("Total elements mismatch after " + totalElements + " write", totalElements,
                     indexer.getTotalElements());
             for (int i = 0; i < totalElements; i++) {
                 String temp = prefix + i;
-                buff = indexer.readFromSegment(true);
+                buff = indexer.readFromSegment();
                 String tempReadStr = new String(buff);
                 Assert.assertEquals("Expected string not matched", temp, tempReadStr);
                 int totalElementsAfterRead = totalElements - i - 1;
@@ -95,13 +95,13 @@ public abstract class AbstractSegmentIndexerTest extends AbstractBaseStorageTest
             for (int i = 0; i < totalElements; i++) {
                 String temp = prefix + i;
                 buff = temp.getBytes();
-                indexer.writeToSegment(buff, 0, buff.length);
+                indexer.writeToSegment(buff);
             }
             Assert.assertEquals("Total elements mismatch after " + totalElements + " write", totalElements,
                     indexer.getTotalElements());
             for (int i = 0; i < totalElements; i++) {
                 String temp = prefix + i;
-                buff = indexer.readFromSegment(true);
+                buff = indexer.readFromSegment();
                 String tempReadStr = new String(buff);
                 Assert.assertEquals("Expected string not matched", temp, tempReadStr);
                 int totalElementsAfterRead = totalElements - i - 1;
@@ -113,22 +113,19 @@ public abstract class AbstractSegmentIndexerTest extends AbstractBaseStorageTest
         }
     }
 
-    @Test
+    /*@Test
     public void testMultipleMessagesMultipleSegmentReadAndWrite() {
         SegmentIndexer indexer = getIndexer();
         try {
             byte[] buff = threeKBText.getBytes();
-            indexer.writeToSegment(buff, 0, buff.length);
+            indexer.writeToSegment(buff);
             Assert.assertEquals("Total elements mismatch after write", 1, indexer.getTotalElements());
-            Assert.assertEquals("Total segments mismatch after write", 1, indexer.getTotalSegments());
             buff = twoKBText.getBytes();
-            indexer.writeToSegment(buff, 0, buff.length);
+            indexer.writeToSegment(buff);
             Assert.assertEquals("Total elements mismatch after second write", 2,
                     indexer.getTotalElements());
-            Assert.assertEquals("Total segments mismatch after second write", 2,
-                    indexer.getTotalSegments());
             buff = fiveKBText.getBytes();
-            indexer.writeToSegment(buff, 0, buff.length);
+            indexer.writeToSegment(buff);
             Assert.assertEquals("Total elements mismatch after third write", 3,
                     indexer.getTotalElements());
             Assert.assertEquals("Total segments mismatch after third write", 3,
@@ -170,7 +167,7 @@ public abstract class AbstractSegmentIndexerTest extends AbstractBaseStorageTest
         } finally {
             indexer.close(true);
         }
-    }
+    }*/
 
     @Test
     public void testIterator() {
@@ -182,7 +179,7 @@ public abstract class AbstractSegmentIndexerTest extends AbstractBaseStorageTest
             for (int i = 0; i < totalElements; i++) {
                 String temp = prefix + i;
                 buff = temp.getBytes();
-                indexer.writeToSegment(buff, 0, buff.length);
+                indexer.writeToSegment(buff);
             }
             Assert.assertEquals("Total elements mismatch after " + totalElements + " write", totalElements,
                     indexer.getTotalElements());
@@ -197,7 +194,7 @@ public abstract class AbstractSegmentIndexerTest extends AbstractBaseStorageTest
             }
             for (i = 0; i < totalElements; i++) {
                 String temp = prefix + i;
-                buff = indexer.readFromSegment(true);
+                buff = indexer.readFromSegment();
                 String tempReadStr = new String(buff);
                 Assert.assertEquals("Expected string not matched", temp, tempReadStr);
                 int totalElementsAfterRead = totalElements - i - 1;
@@ -214,16 +211,15 @@ public abstract class AbstractSegmentIndexerTest extends AbstractBaseStorageTest
         SegmentIndexer indexer = getIndexer();
         try {
             byte[] buff = oneKBText.getBytes();
-            indexer.writeToSegment(buff, 0, buff.length);
-            indexer.writeToSegment(buff, 0, buff.length);
-            indexer.writeToSegment(buff, 0, buff.length);
-            indexer.writeToSegment(buff, 0, buff.length);
+            indexer.writeToSegment(buff);
+            indexer.writeToSegment(buff);
+            indexer.writeToSegment(buff);
+            indexer.writeToSegment(buff);
             Assert.assertEquals("Total elements mismatch after write", 4, indexer.getTotalElements());
-            Assert.assertEquals("Total segments mismatch after write", 2, indexer.getTotalSegments());
             Iterator<byte[]> it = indexer.iterator();
             if (it.hasNext()) {
                 it.next();
-                indexer.writeToSegment(buff, 0, buff.length);
+                indexer.writeToSegment(buff);
                 boolean thrown = false;
                 try {
                     it.next();
@@ -232,11 +228,10 @@ public abstract class AbstractSegmentIndexerTest extends AbstractBaseStorageTest
                 }
                 Assert.assertEquals("Expected ConcurrentModificationException but didn't throw", true, thrown);
             }
-            byte[] tempBuff = indexer.readFromSegment(true);
+            byte[] tempBuff = indexer.readFromSegment();
             String tempStr = new String(tempBuff);
             Assert.assertEquals("Expected 1KB string not matched", oneKBText, tempStr);
             Assert.assertEquals("Total elements mismatch after read", 4, indexer.getTotalElements());
-            Assert.assertEquals("Total segments mismatch after first read", 2, indexer.getTotalSegments());
         } finally {
             indexer.close(true);
         }
@@ -266,10 +261,10 @@ public abstract class AbstractSegmentIndexerTest extends AbstractBaseStorageTest
         String prefix = "This is a test message to verify multiple reads ";
         try {
             byte[] buff = prefix.getBytes();
-            indexer.writeToSegment(buff, 0, buff.length);
-            indexer.writeToSegment(buff, 0, buff.length);
-            indexer.writeToSegment(buff, 0, buff.length);
-            indexer.writeToSegment(buff, 0, buff.length);
+            indexer.writeToSegment(buff);
+            indexer.writeToSegment(buff);
+            indexer.writeToSegment(buff);
+            indexer.writeToSegment(buff);
             Assert.assertEquals("Total elements mismatch after write", 4,
                     indexer.getTotalElements());
             indexer.remove();
@@ -289,19 +284,19 @@ public abstract class AbstractSegmentIndexerTest extends AbstractBaseStorageTest
         String prefix = "This is a test message to verify multiple reads ";
         try {
             byte[] buff = prefix.getBytes();
-            indexer.writeToSegment(buff, 0, buff.length);
-            indexer.writeToSegment(buff, 0, buff.length);
-            indexer.writeToSegment(buff, 0, buff.length);
-            indexer.writeToSegment(buff, 0, buff.length);
+            indexer.writeToSegment(buff);
+            indexer.writeToSegment(buff);
+            indexer.writeToSegment(buff);
+            indexer.writeToSegment(buff);
             Assert.assertEquals("Total elements mismatch after write", 4,
                     indexer.getTotalElements());
             indexer.remove(4);
             Assert.assertEquals("Total elements mismatch after remove", 0,
                     indexer.getTotalElements());
-            indexer.writeToSegment(buff, 0, buff.length);
+            indexer.writeToSegment(buff);
             Assert.assertEquals("Total elements mismatch after write", 1,
                     indexer.getTotalElements());
-            byte[] tempBuff = indexer.readFromSegment(true);
+            byte[] tempBuff = indexer.readFromSegment();
             String tempStr = new String(tempBuff);
             Assert.assertEquals("String mismatch after read", tempStr,
                     prefix);
