@@ -1,5 +1,6 @@
 package com.persistentqueue.storage;
 
+import com.persistentqueue.storage.utils.PersistentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -7,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -38,7 +40,7 @@ public class StorageSegmentManager {
 
     private int segmentId;
 
-    private Map<Integer, CacheValue> cache = new HashMap<>();
+    private Map<Integer, CacheValue> cache = new ConcurrentHashMap<>();
 
     private Map<Integer, Object> segmentLocks = new HashMap<>();
 
@@ -53,6 +55,10 @@ public class StorageSegmentManager {
     private StorageSegment.SegmentType segmentType = StorageSegment.SegmentType.MEMORYMAPPED;
 
     private boolean startCleanupTask = false;
+
+    private boolean closeInProgress = false;
+
+    private boolean cleanInProgress = false;
 
     public StorageSegmentManager(String path, String name, String ext, int segmentId, int initialLength) {
         this.path = path;
@@ -95,13 +101,25 @@ public class StorageSegmentManager {
     }
 
     public void close(boolean delete) {
-        for (CacheValue cacheValue : cache.values()) {
-            try {
-                cacheValue.storageSegment.setDelete(delete);
-                cacheValue.storageSegment.close();
-            }catch (Exception e){
-                throw new RuntimeException(e);
+       /* while(cleanInProgress){
+            logger.info("cleanup task in progress, waiting :" + 1000 +"millis");
+            this.closeInProgress = true;
+            PersistentUtil.sleep(1000);
+        }*/
+        totalLock.lock();
+        try {
+            this.closeInProgress = true;
+            for (CacheValue cacheValue : cache.values()) {
+                try {
+                    cacheValue.storageSegment.setDelete(delete);
+                    cacheValue.storageSegment.close();
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
             }
+        }finally {
+            this.closeInProgress = false;
+            totalLock.unlock();
         }
         if (startCleanupTask) {
             executorService.shutdown();
@@ -205,7 +223,7 @@ public class StorageSegmentManager {
 
         @Override
         public void run() {
-            while (true) {
+            while (!closeInProgress) {
                 try {
                     List<Integer> dirtySegments = new ArrayList<>();
                     long currentTime = System.currentTimeMillis();
@@ -217,6 +235,7 @@ public class StorageSegmentManager {
                             }
                         }
                     }
+                    cleanInProgress = true;
                     if (!dirtySegments.isEmpty()) {
                         for (Integer tempSegmentId : dirtySegments) {
                             cache.remove(tempSegmentId);
@@ -225,6 +244,8 @@ public class StorageSegmentManager {
                     Thread.sleep(this.timeInMillis);
                 } catch (Exception e) {
                     logger.info(e.getMessage(), e);
+                } finally {
+                    cleanInProgress = false;
                 }
             }
         }

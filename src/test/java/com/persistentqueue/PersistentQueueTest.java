@@ -209,21 +209,58 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
     }
 
     @Test
+    public void testAddWith1KBString() {
+        int originalSize = this.initialSize;
+        this.initialSize = 32*1024*1024;
+        PersistentQueue<String> pq = getPersistentQueue(String.class);
+        try {
+            int totalElements = 1000000;
+            logger.info("Total elements:" + totalElements);
+            List<String> list = new ArrayList<>();
+            long startTime = System.currentTimeMillis();
+            for (int i = 0; i < totalElements; i++) {
+                pq.add(oneKBText + i);
+            }
+            long endTime = System.currentTimeMillis();
+            logger.info("Total time for add:" + (endTime-startTime) + "millis");
+            Assert.assertEquals("Total size mismatch", totalElements, pq.size());
+            startTime = System.currentTimeMillis();
+            for (int i = 0; i < totalElements; i++) {
+                String tempStr = oneKBText + i;
+                String retrievedStr = pq.poll();
+                Assert.assertEquals("Multiple poll call fails results", tempStr, retrievedStr);
+            }
+            endTime = System.currentTimeMillis();
+            logger.info("Total time for poll:" + (endTime-startTime) + "millis");
+        } finally {
+            pq.close();
+            this.initialSize = originalSize;
+        }
+    }
+
+    @Test
     public void testAddAllWithInteger() {
         //this.initialSize = 2*1024*1024;
         PersistentQueue<Integer> pq = getPersistentQueue(Integer.class);
         try {
-            int totalElements = 500000;
+            int totalElements = 600000;
+            logger.info("Total elements :" + totalElements);
             List<Integer> list = new ArrayList<>();
             for (int i = 0; i < totalElements; i++) {
                 list.add(i);
             }
+            long startTime = System.currentTimeMillis();
             pq.addAll(list);
+            long endTime = System.currentTimeMillis();
+            logger.info("Total time for addAll:" + (endTime-startTime) + "millis");
             Assert.assertEquals("Total size mismatch", totalElements, pq.size());
+            startTime = System.currentTimeMillis();
             for (int i = 0; i < totalElements; i++) {
                 int retrievedInt = pq.poll();
                 Assert.assertEquals("Multiple poll call fails results", i, retrievedInt);
             }
+            endTime = System.currentTimeMillis();
+            logger.info("Total time for poll:" + (endTime-startTime) + "millis");
             Assert.assertEquals("Total size mismatch", 0, pq.size());
         } finally {
             pq.close();
@@ -232,28 +269,41 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
 
     @Test
     public void testIterator() {
+        int originalSize = this.initialSize;
         this.initialSize = 5 * 1024 * 1024;
         PersistentQueue<Integer> pq = getPersistentQueue(Integer.class);
         try {
-            int totalElements = 500000;
+            int totalElements = 1000000;
+            logger.info("Total elements :" + totalElements);
+            long startTime = System.currentTimeMillis();
             for (int i = 0; i < totalElements; i++) {
                 pq.add(i);
             }
+            long endTime = System.currentTimeMillis();
+            logger.info("Total time for add:" + (endTime-startTime) + "millis");
             Assert.assertEquals("Total size mismatch", totalElements, pq.size());
             Iterator<Integer> it = pq.iterator();
             int j = 0;
+            startTime = System.currentTimeMillis();
             while (it.hasNext()) {
                 int retrievedInt = it.next();
                 Assert.assertEquals("it.next() failed", j, retrievedInt);
                 j++;
             }
+            endTime = System.currentTimeMillis();
+            logger.info("Total time for iterator :" + (endTime-startTime) + "millis");
+            startTime = System.currentTimeMillis();
             for (int i = 0; i < totalElements; i++) {
                 int retrievedInt = pq.poll();
                 Assert.assertEquals("Multiple poll call fails results", i, retrievedInt);
             }
+            endTime = System.currentTimeMillis();
+            logger.info("Total time for poll :" + (endTime-startTime) + "millis");
+
             Assert.assertEquals("Total size mismatch", 0, pq.size());
         } finally {
             pq.close();
+            this.initialSize = originalSize;
         }
     }
 
