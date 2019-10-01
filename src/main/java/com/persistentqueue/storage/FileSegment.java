@@ -141,16 +141,6 @@ public class FileSegment extends AbstractStorageSegment {
     }
 
     @Override
-    public boolean isDirty() {
-        return this.dirty;
-    }
-
-    @Override
-    public void setDirty(boolean dirty) {
-        this.dirty = dirty;
-    }
-
-    @Override
     public boolean isDelete() {
         return this.delete;
     }

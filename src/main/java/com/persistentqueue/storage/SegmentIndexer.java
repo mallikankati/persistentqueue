@@ -155,6 +155,14 @@ public class SegmentIndexer implements Iterable<byte[]> {
 
     private AtomicLong tailPositionCounter;
 
+    private int previousReadDataIndexSegmentId;
+
+    private int previousReadDataSegmentId;
+
+    private AtomicInteger writeCounter = new AtomicInteger(0);
+
+    private AtomicInteger readCounter = new AtomicInteger(0);
+
     /**
      * Segment types are FILE or MEMORYMAPPED
      */
@@ -190,15 +198,15 @@ public class SegmentIndexer implements Iterable<byte[]> {
         this.tailPositionCounter = new AtomicLong(0);
         metadataStorageManager = new StorageSegmentManager(this.path, this.name, METADATA_SEGEMENT_EXT,
                 0, DEFAULT_METADATA_SEG_SIZE);
-        metadataStorageManager.init(this.segmentType, 20 * 1000, -1, false);
+        metadataStorageManager.init(this.segmentType, 20 * 1000);
 
         dataIndexStorageManager = new StorageSegmentManager(this.path, this.name, DATA_INDEX_SEGEMENT_EXT,
                 0, DATA_INDEX_SEG_SIZE);
-        dataIndexStorageManager.init(this.segmentType, DEFAULT_DATA_INDEX_CACHE_TTL, 5000, true);
+        dataIndexStorageManager.init(this.segmentType, DEFAULT_DATA_INDEX_CACHE_TTL);
 
         dataStorageManager = new StorageSegmentManager(this.path, this.name, DATA_SEGEMENT_EXT,
                 dataSegmentCounter.getAndIncrement(), initialSize);
-        dataStorageManager.init(this.segmentType, DEFAULT_DATA_CACHE_TTL, 5000, true);
+        dataStorageManager.init(this.segmentType, DEFAULT_DATA_CACHE_TTL);
         this.currentDataSegmentId = dataSegmentCounter.get();
         this.currentDataSegmentOffset = 0;
         mainHeader.startPosition = startPositionCounter.get();
@@ -214,7 +222,7 @@ public class SegmentIndexer implements Iterable<byte[]> {
         return (int) (this.tailPositionCounter.get() - this.startPositionCounter.get());
     }
 
-    public long getStartIndex(){
+    public long getStartIndex() {
         return this.startPositionCounter.get();
     }
 
@@ -234,21 +242,29 @@ public class SegmentIndexer implements Iterable<byte[]> {
         if (buff == null || buff.length == 0) {
             throw new RuntimeException("Can not write empty buffer");
         }
-        if (buff.length >= this.initialSize) {
+       /* if (buff.length >= this.initialSize) {
             throw new RuntimeException("buffer size is greater than default file size. " +
                     "Either increase initial size or reduce buffer size");
-        }
+        }*/
         int dataIndexSegmentId = 0;
         dataWriteLock.lock();
         try {
             //update data segment
+            boolean isBigSizeBuffer = false;
             if (this.currentDataSegmentOffset + buff.length > this.initialSize) {
+                if (buff.length > this.initialSize) {
+                    isBigSizeBuffer = true;
+                }
                 this.currentDataSegmentId++;
                 this.currentDataSegmentOffset = 0;
             }
-            StorageSegment segment = dataStorageManager.acquireSegment(this.currentDataSegmentId);
+            StorageSegment segment = null;
+            if (!isBigSizeBuffer) {
+                segment = dataStorageManager.acquireSegment(this.currentDataSegmentId);
+            } else {
+                segment = dataStorageManager.acquireSegment(this.currentDataSegmentId, buff.length);
+            }
             segment.write(this.currentDataSegmentOffset, buff);
-            segment.setDirty(true);
 
             //update data index segment
             dataIndexSegmentId = getDataIndexSegmentId(this.tailPositionCounter.get());
@@ -259,7 +275,6 @@ public class SegmentIndexer implements Iterable<byte[]> {
             buffer.putInt(this.currentDataSegmentOffset);
             buffer.putInt(buff.length);
             buffer.putLong(System.currentTimeMillis());
-            dataIndexSegment.setDirty(true);
 
             this.currentDataSegmentOffset += buff.length;
             this.tailPositionCounter.incrementAndGet();
@@ -269,6 +284,15 @@ public class SegmentIndexer implements Iterable<byte[]> {
             mHeader.tailPosition = this.tailPositionCounter.get();
             mHeader.startPosition = mainHeader.startPosition;
             writeMetadataHeader(mHeader);
+            writeCounter.incrementAndGet();
+            if (writeCounter.get() % 1000000 == 0) {
+                logger.info("write segment:" + mainHeader);
+                StringBuffer sb = new StringBuffer();
+                sb.append("index cache:").append(dataIndexStorageManager.getCachedSegments());
+                sb.append(", data cache:").append(dataStorageManager.getCachedSegments());
+                logger.info("Cache details [" + sb.toString() + "]");
+                writeCounter = new AtomicInteger(0);
+            }
         } finally {
             dataStorageManager.releaseSegment(this.currentDataSegmentId);
             dataIndexStorageManager.releaseSegment(dataIndexSegmentId);
@@ -280,20 +304,24 @@ public class SegmentIndexer implements Iterable<byte[]> {
 
     public byte[] readFromSegment() {
         logger.debug("begin readSegment " + mainHeader);
-        if (mainHeader.startPosition == mainHeader.tailPosition) {
-            return null;
+        byte[] buff = readElementFromSegment(mainHeader.startPosition, true);
+        readCounter.incrementAndGet();
+        if (readCounter.get() % 1000000 == 0) {
+            logger.info("read segment:" + mainHeader);
+            StringBuffer sb = new StringBuffer();
+            sb.append("index cache:").append(dataIndexStorageManager.getCachedSegments());
+            sb.append(", data cache:").append(dataStorageManager.getCachedSegments());
+            logger.info("Cache details [" + sb.toString() + "]");
+            readCounter = new AtomicInteger(0);
         }
-        byte[] buff = readElementFromSegment(mainHeader.startPosition);
-        this.startPositionCounter.incrementAndGet();
-        MainHeader mHeader = new MainHeader();
-        mHeader.startPosition = this.startPositionCounter.get();
-        mHeader.tailPosition = mainHeader.tailPosition;
-        writeMetadataHeader(mHeader);
         logger.debug("end readSegment " + mainHeader);
         return buff;
     }
 
-    public byte[] readElementFromSegment(long index) {
+    public byte[] readElementFromSegment(long index, boolean markForDelete) {
+        if (mainHeader.startPosition == mainHeader.tailPosition) {
+            return null;
+        }
         int dataIndexSegmentId = 0;
         int dataSegmentId = 0;
         byte[] buff = null;
@@ -306,11 +334,33 @@ public class SegmentIndexer implements Iterable<byte[]> {
             dataSegmentId = buffer.getInt();
             int dataItemOffset = buffer.getInt();
             int dataLength = buffer.getInt();
-            StorageSegment dataSegment = dataStorageManager.acquireSegment(dataSegmentId);
+            StorageSegment dataSegment = null;
+            if (dataLength < this.initialSize) {
+                dataSegment = dataStorageManager.acquireSegment(dataSegmentId);
+            } else {
+                dataSegment = dataStorageManager.acquireSegment(dataSegmentId, dataLength);
+            }
             buff = dataSegment.read(dataItemOffset, 0, dataLength);
+            if (previousReadDataIndexSegmentId != dataIndexSegmentId && markForDelete) {
+                dataIndexStorageManager.markForDelete(previousReadDataIndexSegmentId);
+                logger.info("data index seg to close:" + previousReadDataIndexSegmentId);
+            }
+            if (previousReadDataSegmentId != dataSegmentId && markForDelete) {
+                dataStorageManager.markForDelete(previousReadDataSegmentId);
+                logger.info("data seg to close:" + previousReadDataSegmentId);
+            }
+            if (markForDelete) {
+                this.startPositionCounter.incrementAndGet();
+                MainHeader mHeader = new MainHeader();
+                mHeader.startPosition = this.startPositionCounter.get();
+                mHeader.tailPosition = mainHeader.tailPosition;
+                writeMetadataHeader(mHeader);
+            }
         } finally {
             dataIndexStorageManager.releaseSegment(dataIndexSegmentId);
             dataStorageManager.releaseSegment(dataSegmentId);
+            previousReadDataIndexSegmentId = dataIndexSegmentId;
+            previousReadDataSegmentId = dataSegmentId;
             dataReadLock.unlock();
         }
         return buff;
@@ -411,7 +461,7 @@ public class SegmentIndexer implements Iterable<byte[]> {
             if (isEmpty()) {
                 throw new NoSuchElementException();
             }
-            byte[] buff = readElementFromSegment(currentPosition);
+            byte[] buff = readElementFromSegment(currentPosition, false);
             this.currentIndex++;
             this.currentPosition++;
             return buff;

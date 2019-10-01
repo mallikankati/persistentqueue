@@ -69,17 +69,10 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
      */
     protected String name;
 
-    protected boolean blocking = false;
-
     /**
      * initial dataSegmentSize;
      */
     protected int dataSegmentSize;
-
-    /**
-     * Metadata segment size
-     */
-    private int metadataSegmentSize;
 
     protected SegmentIndexer segmentIndexer;
 
@@ -168,7 +161,7 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
     @Override
     public E peek() {
         long currentStartIndex = segmentIndexer.getStartIndex();
-        byte[] buff = segmentIndexer.readElementFromSegment(currentStartIndex);
+        byte[] buff = segmentIndexer.readElementFromSegment(currentStartIndex, false);
         E e = deserialize(buff);
         return e;
     }

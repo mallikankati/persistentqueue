@@ -113,16 +113,6 @@ public class MemoryMappedSegment extends AbstractStorageSegment {
     }
 
     @Override
-    public boolean isDirty() {
-        return this.dirty;
-    }
-
-    @Override
-    public void setDirty(boolean dirty) {
-        this.dirty = dirty;
-    }
-
-    @Override
     public boolean isDelete() {
         return this.delete;
     }
@@ -172,7 +162,6 @@ public class MemoryMappedSegment extends AbstractStorageSegment {
     public void close() throws IOException {
         synchronized (this) {
             if (isOpen()) {
-
                 this.threadLocalBuffer.close();
                 this.open = false;
                 this.threadLocalBuffer = null;

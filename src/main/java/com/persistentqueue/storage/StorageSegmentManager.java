@@ -50,15 +50,7 @@ public class StorageSegmentManager {
 
     private long timeToLiveInMillis = 5000;
 
-    private long cleanupFrequencyInMillis = 5000;
-
     private StorageSegment.SegmentType segmentType = StorageSegment.SegmentType.MEMORYMAPPED;
-
-    private boolean startCleanupTask = false;
-
-    private boolean closeInProgress = false;
-
-    private boolean cleanInProgress = false;
 
     public StorageSegmentManager(String path, String name, String ext, int segmentId, int initialLength) {
         this.path = path;
@@ -68,22 +60,20 @@ public class StorageSegmentManager {
         this.initialLength = initialLength;
     }
 
-    public void init(StorageSegment.SegmentType segmentType, long timeToLiveInMillis,
-                     long cleanupFrequencyInMillis,
-                     boolean startCleanupTask) {
-        if (this.initialLength <= 0){
+    public void init(StorageSegment.SegmentType segmentType, long timeToLiveInMillis) {
+        if (this.initialLength <= 0) {
             throw new RuntimeException("initial segment size should be more than 1KB");
         }
-        if (this.path == null || this.path.trim().length() <=0){
+        if (this.path == null || this.path.trim().length() <= 0) {
             throw new RuntimeException("Need a valid path");
         }
-        if (this.name == null || this.name.trim().length() <=0){
+        if (this.name == null || this.name.trim().length() <= 0) {
             throw new RuntimeException("Need a valid name");
         }
-        if (this.ext == null || this.ext.trim().length() <=0){
+        if (this.ext == null || this.ext.trim().length() <= 0) {
             throw new RuntimeException("Need a valid file extension");
         }
-        if (this.segmentId < 0){
+        if (this.segmentId < 0) {
             throw new RuntimeException("Segment id should be greater than zero");
         }
         if (segmentType != null) {
@@ -92,41 +82,35 @@ public class StorageSegmentManager {
         if (timeToLiveInMillis > 0) {
             this.timeToLiveInMillis = timeToLiveInMillis;
         }
-        if (cleanupFrequencyInMillis > 0){
-            this.cleanupFrequencyInMillis = cleanupFrequencyInMillis;
-        }
-        if (startCleanupTask) {
-            executorService.submit(new CleanupTask(this.cleanupFrequencyInMillis));
-        }
     }
 
     public void close(boolean delete) {
-       /* while(cleanInProgress){
-            logger.info("cleanup task in progress, waiting :" + 1000 +"millis");
-            this.closeInProgress = true;
-            PersistentUtil.sleep(1000);
-        }*/
         totalLock.lock();
         try {
-            this.closeInProgress = true;
             for (CacheValue cacheValue : cache.values()) {
                 try {
                     cacheValue.storageSegment.setDelete(delete);
-                    cacheValue.storageSegment.close();
+                    if (!cacheValue.storageSegment.isClosed()) {
+                        cacheValue.storageSegment.close();
+                    }
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
             }
-        }finally {
-            this.closeInProgress = false;
+            if (delete) {
+                cache.clear();
+            }
+        } finally {
             totalLock.unlock();
         }
-        if (startCleanupTask) {
-            executorService.shutdown();
-        }
+        executorService.shutdown();
     }
 
     public StorageSegment acquireSegment(int segmentId) {
+        return acquireSegment(segmentId, this.initialLength);
+    }
+
+    public StorageSegment acquireSegment(int segmentId, int customSize) {
         CacheValue cacheValue = cache.get(segmentId);
         if (cacheValue == null) {
             Object segmentLock = null;
@@ -143,7 +127,7 @@ public class StorageSegmentManager {
                 synchronized (segmentLock) {
                     cacheValue = cache.get(segmentId);
                     if (cacheValue == null) {
-                        cacheValue = putAndGet(segmentId);
+                        cacheValue = putAndGet(segmentId, customSize);
                     }
                 }
             } finally {
@@ -163,18 +147,21 @@ public class StorageSegmentManager {
         return cacheValue.storageSegment;
     }
 
-    public int getCachedSegments(){
+
+    public int getCachedSegments() {
         return cache.size();
     }
 
-    private CacheValue putAndGet(int segmentId) {
+    private CacheValue putAndGet(int segmentId, int customSize) {
+        List<StorageSegment> closeSegments = identifyCloseSegments(segmentId);
         CacheValue cacheValue = new CacheValue();
         cacheValue.lastAccessTime = System.currentTimeMillis();
         cacheValue.refCount.incrementAndGet();
         cacheValue.ttl = this.timeToLiveInMillis;
-        StorageSegment segment = createSegment(this.path, this.name, this.ext, segmentId, this.initialLength);
+        StorageSegment segment = createSegment(this.path, this.name, this.ext, segmentId, customSize);
         cacheValue.storageSegment = segment;
         cache.put(segmentId, cacheValue);
+        executorService.submit(new CleanupTask(closeSegments));
         return cacheValue;
     }
 
@@ -198,6 +185,13 @@ public class StorageSegmentManager {
         }
     }
 
+    public void markForDelete(int segmentId) {
+        CacheValue cacheValue = cache.get(segmentId);
+        if (cacheValue != null) {
+            cacheValue.storageSegment.setDelete(true);
+        }
+    }
+
     private class CacheValue {
         private long lastAccessTime;
         private AtomicInteger refCount = new AtomicInteger(0);
@@ -207,46 +201,47 @@ public class StorageSegmentManager {
         CacheValue() {
         }
 
-        private boolean isExpired(long currentTime){
+        private boolean isExpired(long currentTime) {
             return refCount.get() <= 0 && (currentTime > (lastAccessTime + ttl));
         }
+    }
+
+    private List<StorageSegment> identifyCloseSegments(int segmentId) {
+        List<StorageSegment> dirtySegments = new ArrayList<>();
+        long currentTime = System.currentTimeMillis();
+        for (CacheValue cacheValue : cache.values()) {
+            if (cacheValue.storageSegment.getSegmentId() != segmentId && cacheValue.isExpired(currentTime)) {
+                dirtySegments.add(cacheValue.storageSegment);
+            }
+        }
+        return dirtySegments;
     }
 
     //This suppose to be in cache.
     private class CleanupTask implements Runnable {
 
-        private long timeInMillis;
+        List<StorageSegment> closeSegments;
 
-        CleanupTask(long timeInMillis) {
-            this.timeInMillis = timeInMillis;
+        CleanupTask(List<StorageSegment> closeSegments) {
+            this.closeSegments = closeSegments;
         }
 
         @Override
         public void run() {
-            while (!closeInProgress) {
-                try {
-                    List<Integer> dirtySegments = new ArrayList<>();
-                    long currentTime = System.currentTimeMillis();
-                    for (CacheValue cacheValue : cache.values()) {
-                        if (cacheValue.isExpired(currentTime)){
-                            if (cacheValue.storageSegment.isDirty()) {
-                                cacheValue.storageSegment.close();
-                                dirtySegments.add(cacheValue.storageSegment.getSegmentId());
-                            }
+            try {
+                if (!closeSegments.isEmpty()) {
+                    for (StorageSegment tempSegment : closeSegments) {
+                        logger.debug("Cleanup in progress for segment [ ext:" + tempSegment.getExtension() +
+                                ", id:" + tempSegment.getSegmentId() + "]");
+                        if (!tempSegment.isClosed()) {
+                            tempSegment.close();
                         }
+                        cache.remove(tempSegment.getSegmentId());
                     }
-                    cleanInProgress = true;
-                    if (!dirtySegments.isEmpty()) {
-                        for (Integer tempSegmentId : dirtySegments) {
-                            cache.remove(tempSegmentId);
-                        }
-                    }
-                    Thread.sleep(this.timeInMillis);
-                } catch (Exception e) {
-                    logger.info(e.getMessage(), e);
-                } finally {
-                    cleanInProgress = false;
                 }
+            } catch (Exception e) {
+                logger.info(e.getMessage(), e);
+            } finally {
             }
         }
     }

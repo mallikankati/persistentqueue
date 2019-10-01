@@ -104,20 +104,6 @@ public interface StorageSegment extends Closeable {
     int remaining(int position);
 
     /**
-     * Is it dirty to delete from cache
-     *
-     * @return
-     */
-    boolean isDirty();
-
-    /**
-     * Set dirty flag
-     *
-     * @param dirty
-     */
-    void setDirty(boolean dirty);
-
-    /**
      * Delete from underneath storage
      *
      * @return

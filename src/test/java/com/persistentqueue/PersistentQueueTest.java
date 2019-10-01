@@ -211,27 +211,36 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
     @Test
     public void testAddWith1KBString() {
         int originalSize = this.initialSize;
-        this.initialSize = 32*1024*1024;
+        this.initialSize = 64*1024*1024;
         PersistentQueue<String> pq = getPersistentQueue(String.class);
+        boolean loadTest = false;
         try {
-            int totalElements = 1000000;
-            logger.info("Total elements:" + totalElements);
-            List<String> list = new ArrayList<>();
-            long startTime = System.currentTimeMillis();
-            for (int i = 0; i < totalElements; i++) {
-                pq.add(oneKBText + i);
+            int loopCount = 1;
+            if (loadTest){
+                loopCount = 1000;
             }
-            long endTime = System.currentTimeMillis();
-            logger.info("Total time for add:" + (endTime-startTime) + "millis");
-            Assert.assertEquals("Total size mismatch", totalElements, pq.size());
-            startTime = System.currentTimeMillis();
-            for (int i = 0; i < totalElements; i++) {
-                String tempStr = oneKBText + i;
-                String retrievedStr = pq.poll();
-                Assert.assertEquals("Multiple poll call fails results", tempStr, retrievedStr);
+            for (int j = 0; j < loopCount; j++) {
+                logger.info("iteration :" + j);
+
+                int totalElements = 1000000;
+                logger.info("Total elements:" + totalElements);
+                List<String> list = new ArrayList<>();
+                long startTime = System.currentTimeMillis();
+                for (int i = 0; i < totalElements; i++) {
+                    pq.add(oneKBText + i);
+                }
+                long endTime = System.currentTimeMillis();
+                logger.info("Total time for add:" + (endTime - startTime) + "millis");
+                Assert.assertEquals("Total size mismatch", totalElements, pq.size());
+                startTime = System.currentTimeMillis();
+                for (int i = 0; i < totalElements; i++) {
+                    String tempStr = oneKBText + i;
+                    String retrievedStr = pq.poll();
+                    Assert.assertEquals("Multiple poll call fails results", tempStr, retrievedStr);
+                }
+                endTime = System.currentTimeMillis();
+                logger.info("Total time for poll:" + (endTime - startTime) + "millis");
             }
-            endTime = System.currentTimeMillis();
-            logger.info("Total time for poll:" + (endTime-startTime) + "millis");
         } finally {
             pq.close();
             this.initialSize = originalSize;
@@ -334,7 +343,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
     public void testCustomObjects() {
         PersistentQueue<Record> pq = getPersistentQueue(Record.class);
         try {
-            int totalElements = 10;
+            int totalElements = 10000;
             for (int i = 0; i < totalElements; i++) {
                 Record r = Record.createRecord(i);
                 pq.add(r);

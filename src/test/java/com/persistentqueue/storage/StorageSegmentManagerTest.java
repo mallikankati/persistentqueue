@@ -11,16 +11,7 @@ public class StorageSegmentManagerTest extends AbstractBaseStorageTest{
     private StorageSegmentManager getStorageSegmentManager(){
         StorageSegmentManager storageSegmentManager  = new StorageSegmentManager(this.path, this.name, this.dataFileExt,
                 0, this.initialSize);
-        storageSegmentManager.init(null, 2000, -1, false);
-        return storageSegmentManager;
-    }
-
-
-    private StorageSegmentManager getStorageSegmentManager(long cleanupFrequencyInMillis, boolean startCleanupTask){
-        StorageSegmentManager storageSegmentManager  = new StorageSegmentManager(this.path, this.name, this.dataFileExt,
-                0, this.initialSize);
-        storageSegmentManager.init(null, 2000,
-                cleanupFrequencyInMillis, startCleanupTask);
+        storageSegmentManager.init(null, 2000);
         return storageSegmentManager;
     }
 
@@ -63,17 +54,19 @@ public class StorageSegmentManagerTest extends AbstractBaseStorageTest{
 
     @Test
     public void testCleanupTask(){
-        StorageSegmentManager segmentManager = getStorageSegmentManager(2000, true);
+        StorageSegmentManager segmentManager = getStorageSegmentManager();
         try {
             StorageSegment segment = segmentManager.acquireSegment(0);
             Assert.assertEquals("Expected cache size before sleep should be 1", 1, segmentManager.getCachedSegments());
             PersistentUtil.sleep(2500);
             Assert.assertEquals("Expected cache size after sleep should be 1", 1, segmentManager.getCachedSegments());
-            segment.setDirty(true);
+            //segment.setDirty(true);
             segment.setDelete(true);
             segmentManager.releaseSegment(0);
+            segment = segmentManager.acquireSegment(1);
             PersistentUtil.sleep(2500);
-            Assert.assertEquals("Expected cache size after releasesegment should be 0", 0, segmentManager.getCachedSegments());
+            segmentManager.releaseSegment(1);
+            Assert.assertEquals("Expected cache size after releasesegment should be 1", 1, segmentManager.getCachedSegments());
         } finally {
             segmentManager.close(true);
         }

@@ -38,8 +38,6 @@ public abstract class AbstractStorageSegment implements StorageSegment {
 
     protected boolean delete = false;
 
-    protected boolean dirty = false;
-
     protected RandomAccessFile initializeFile(String path, String name, String ext,
                                               int segmentId, int initialLength) throws IOException {
         File file = null;
