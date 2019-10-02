@@ -193,6 +193,7 @@ public class MemoryMappedSegment extends AbstractStorageSegment {
             MappedByteBuffer buffer = (MappedByteBuffer)byteBuffer ;
             buffer.force();
             closeDirectBuffer(byteBuffer);
+            byteBuffer = null;
         }
     }
 }

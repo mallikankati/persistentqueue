@@ -288,8 +288,8 @@ public class SegmentIndexer implements Iterable<byte[]> {
             if (writeCounter.get() % 1000000 == 0) {
                 logger.info("write segment:" + mainHeader);
                 StringBuffer sb = new StringBuffer();
-                sb.append("index cache:").append(dataIndexStorageManager.getCachedSegments());
-                sb.append(", data cache:").append(dataStorageManager.getCachedSegments());
+                sb.append("index :").append(dataIndexStorageManager);
+                sb.append(", data :").append(dataStorageManager);
                 logger.info("Cache details [" + sb.toString() + "]");
                 writeCounter = new AtomicInteger(0);
             }
@@ -309,8 +309,8 @@ public class SegmentIndexer implements Iterable<byte[]> {
         if (readCounter.get() % 1000000 == 0) {
             logger.info("read segment:" + mainHeader);
             StringBuffer sb = new StringBuffer();
-            sb.append("index cache:").append(dataIndexStorageManager.getCachedSegments());
-            sb.append(", data cache:").append(dataStorageManager.getCachedSegments());
+            sb.append("index :").append(dataIndexStorageManager);
+            sb.append(", data :").append(dataStorageManager);
             logger.info("Cache details [" + sb.toString() + "]");
             readCounter = new AtomicInteger(0);
         }

@@ -245,4 +245,12 @@ public class StorageSegmentManager {
             }
         }
     }
+
+    public String toString(){
+        StringBuffer sb = new StringBuffer();
+        sb.append("storageManager [ ext:").append(this.ext);
+        sb.append(", size:" + this.getCachedSegments());
+        sb.append(", ").append(cache.keySet()).append("]");
+        return sb.toString();
+    }
 }
