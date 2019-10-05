@@ -2,82 +2,76 @@ package com.persistentqueue.storage;
 
 import com.persistentqueue.PersistentQueue;
 import com.persistentqueue.storage.utils.PersistentUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.IntBuffer;
-import java.util.ArrayList;
+import java.nio.file.Paths;
 import java.util.ConcurrentModificationException;
 import java.util.Iterator;
-import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Segment indexer manages metadata and read/write elements in the queue.
  * <p>
- * Default metadata segment size is fixed length 4096 bytes but it can be increased by multiple page sizes.
+ * Default metadata segment size is fixed length 4KB but it can be customized to different page sizes.
  * <p>
- * Metadata segment consists of main header + segment header
+ * Metadata segment consists of start and tail pointers of data index. These pointers are used to traverse
+ * the queue. New element to the queue add at the end and read happens from the front of the queue.
+ * start and tail pointers are monotonically increasing numbers
  * <p>
- * Main header occupies 28 bytes, segment header occupies remaining 4068 bytes
- * Segment header contains
- * 4 bytes  total segments count
- * 4064 bytes array of segment id's
+ * Index header consists of
+ * <ul>
+ * <li>data segment id </li>
+ * <li>data offset in the segment</li>
+ * <li>length of the data</li>
+ * <li>insertion timestamp in millis</li>
+ * </ul>
+ * Which occupies 2^5 = 32 bytes.
+ * </p>
  * <p>
- * Each segment is 4 bytes, that means default max segment's can be limited to 1016 files.
- * <p>
- * Note: If No of elements inserted crossing this limit
- * 1)Increase initial data file size or
- * 2)Increase default metadata segment size
+ * Insertion algorithm as follows
+ * <ul>
+ * <li>
+ * read tail pointer from metadata and derive data index using
+ * data index = (tail pointer)/(total no of elements in a index)
+ * total no of elements are fixed 2^18 = 256*1024
+ * </li>
+ * <li>
+ * Derive the offset using
+ * ((tail index)%total no of elements)*32 (each index header length)
+ * </li>
+ * </ul>
+ * </p>
+ *
+ * @author Mallik Ankati
  */
 public class SegmentIndexer implements Iterable<byte[]> {
+
+    private static final Logger logger = LoggerFactory.getLogger(SegmentIndexer.class);
 
     private static int VERSION = 1;
 
     /**
      * Stores metadata in the segment
      */
-    private StorageSegment metadataSegment;
+    private StorageSegmentManager metadataStorageManager;
 
     /**
-     * start segment
+     * stores data index information
      */
-    private StorageSegment startSegment;
+    private StorageSegmentManager dataIndexStorageManager;
 
     /**
-     * If write heavy applications, tail pointer can be ahead of start pointer.
-     * In that scenario tail segment could be different from start segment.
+     * stores real data in the segment
      */
-    private StorageSegment tailSegment;
-
-    /**
-     * Metadata header 28 bytes in length which described in {@link PersistentQueue}
-     */
-    private static final int DEFAULT_METADATA_HEADER_LENGTH = 28;
-
-    /**
-     * metadata buffer 28 bytes in length
-     */
-    //private byte[] metadaBuff = new byte[DEFAULT_METADATA_HEADER_LENGTH];
-
-    private MainHeader mainHeader;
-
-    private SegmentHeader segmentHeader;
-
-    /**
-     * Default metadata segment size
-     */
-    private static int DEFAULT_METADATA_SEG_SIZE = 4096;
-
-    /**
-     * Default data segment size.
-     */
-    private static int DEFAULT_DATA_SEG_SIZE = 4096;
-
-    /**
-     * Segment types are FILE or MEMORY, default it to FILE
-     */
-    private StorageSegment.SegmentType segmentType = StorageSegment.SegmentType.MEMORYMAPPED;
+    private StorageSegmentManager dataStorageManager;
 
     /**
      * Extension of data segment file
@@ -89,6 +83,40 @@ public class SegmentIndexer implements Iterable<byte[]> {
      */
     private static final String METADATA_SEGEMENT_EXT = ".meta";
 
+    private static final String DATA_INDEX_SEGEMENT_EXT = ".index";
+
+    /**
+     * Metadata header 36 bytes in length which described in {@link PersistentQueue}
+     */
+    private static final int DEFAULT_METADATA_HEADER_LENGTH = 20;
+
+    private MainHeader mainHeader;
+
+    /**
+     * Default metadata segment size
+     */
+    private static int DEFAULT_METADATA_SEG_SIZE = 1024;
+
+    /**
+     * Total no of data index elements can be stored in a segment
+     */
+    private static int TOTAL_NO_OF_DATA_INDEX_ELEMENTS = 256 * 1024;
+
+    /**
+     * Each index element is 32 bytes in length(datasegmentid + dataoffset + datalength +timestamp)
+     */
+    private static int DATA_INDEX_ELEMENT_HEADER = 32;
+
+    /**
+     * Each  data index segment size in bytes
+     */
+    private static int DATA_INDEX_SEG_SIZE = TOTAL_NO_OF_DATA_INDEX_ELEMENTS * DATA_INDEX_ELEMENT_HEADER;
+
+    /**
+     * Default data segment size.
+     */
+    private static int DEFAULT_DATA_SEG_SIZE = 32 * 1024 * 1024; //32MB
+
     /**
      * Storage path
      */
@@ -96,13 +124,56 @@ public class SegmentIndexer implements Iterable<byte[]> {
 
     private String name = null;
 
+    /**
+     * Data segment size provided by the user
+     */
     private int initialSize;
+
+    private static int DEFAULT_DATA_INDEX_CACHE_TTL = 2000;
+
+    private static int DEFAULT_DATA_CACHE_TTL = 2000;
 
     /**
      * Monotonically increasing number for each segment
      */
-    private AtomicInteger segmentCounter = new AtomicInteger(100);
+    private AtomicInteger dataSegmentCounter = null;
 
+    private ReadWriteLock metadataLock = new ReentrantReadWriteLock();
+
+    private Lock metadataWriteLock = metadataLock.writeLock();
+
+    private ReadWriteLock dataSegmentLock = new ReentrantReadWriteLock();
+
+    private Lock dataReadLock = dataSegmentLock.readLock();
+
+    private Lock dataWriteLock = dataSegmentLock.writeLock();
+
+    private AtomicLong startPositionCounter;
+
+    private int currentDataSegmentId;
+
+    private int currentDataSegmentOffset;
+
+    private AtomicLong tailPositionCounter;
+
+    private int previousReadDataIndexSegmentId;
+
+    private int previousReadDataSegmentId;
+
+    private boolean printReadSegInfo = true;
+
+    private AtomicInteger writeCounter = new AtomicInteger(0);
+
+    private AtomicInteger readCounter = new AtomicInteger(0);
+
+    /**
+     * Segment types are FILE or MEMORYMAPPED
+     */
+    private StorageSegment.SegmentType segmentType = StorageSegment.SegmentType.MEMORYMAPPED;
+
+    /**
+     * @param segmentType
+     */
     public void setSegmentType(StorageSegment.SegmentType segmentType) {
         this.segmentType = segmentType;
     }
@@ -110,7 +181,6 @@ public class SegmentIndexer implements Iterable<byte[]> {
     public SegmentIndexer() {
         this.mainHeader = new MainHeader();
         this.mainHeader.version = VERSION;
-        this.segmentHeader = new SegmentHeader();
     }
 
     public void initialize(String path, String name, int initialSize) {
@@ -123,67 +193,29 @@ public class SegmentIndexer implements Iterable<byte[]> {
         if (initialSize <= 0) {
             initialSize = DEFAULT_DATA_SEG_SIZE;
         }
+        //PersistentUtil.deleteDirectory(Paths.get(path));
         this.path = path;
         this.name = name;
         this.initialSize = initialSize;
-        metadataSegment = createAndOpenSegment(path, name, METADATA_SEGEMENT_EXT, -1,
-                DEFAULT_METADATA_SEG_SIZE);
-        startSegment = tailSegment = createAndOpenSegment(path, name, DATA_SEGEMENT_EXT,
-                segmentCounter.getAndIncrement(), initialSize);
-        mainHeader.totalElements = 0;
-        mainHeader.startSegmentId = startSegment.getSegmentId();
-        mainHeader.startPosition = 0;
-        mainHeader.tailSegmentId = 0;
-        mainHeader.tailPosition = 0;
-        segmentHeader.segments.clear();
-        segmentHeader.length = 0;
-        segmentHeader.addSegment(startSegment.getSegmentId());
-        writeMetadataHeader();
-    }
+        this.dataSegmentCounter = new AtomicInteger(100);
+        this.startPositionCounter = new AtomicLong(0);
+        this.tailPositionCounter = new AtomicLong(0);
+        metadataStorageManager = new StorageSegmentManager(this.path, this.name, METADATA_SEGEMENT_EXT,
+                0, DEFAULT_METADATA_SEG_SIZE);
+        metadataStorageManager.init(this.segmentType, 20 * 1000);
 
-    /**
-     * If the segment is already open it will return it otherwise it will open a storage segment for read/write
-     *
-     * @param segmentId
-     * @return
-     */
-    public StorageSegment getSegment(int segmentId) {
-        if (mainHeader.startSegmentId == segmentId) {
-            return startSegment;
-        }
-        if (mainHeader.tailSegmentId == segmentId) {
-            return tailSegment;
-        }
-        StorageSegment segment = createAndOpenSegment(this.path, this.name, DATA_SEGEMENT_EXT,
-                segmentId, initialSize);
-        return segment;
-    }
+        dataIndexStorageManager = new StorageSegmentManager(this.path, this.name, DATA_INDEX_SEGEMENT_EXT,
+                0, DATA_INDEX_SEG_SIZE);
+        dataIndexStorageManager.init(this.segmentType, DEFAULT_DATA_INDEX_CACHE_TTL);
 
-    public int getNextSegmentId(int segmentId) {
-        int tempSegmentId = -1;
-        for (int i = 0; i < segmentHeader.segments.size(); i++) {
-            if (segmentHeader.segments.get(i) == segmentId) {
-                tempSegmentId = segmentHeader.segments.get(i + 1);
-                break;
-            }
-        }
-        return tempSegmentId;
-    }
-
-    public StorageSegment getNextSegment(int segmentId) {
-        StorageSegment tempSegment = null;
-        int tempSegmentId = getNextSegmentId(segmentId);
-        if (tempSegmentId != -1) {
-            if (tempSegmentId == this.tailSegment.getSegmentId()) {
-                tempSegment = this.tailSegment;
-            } else if (tempSegmentId == this.startSegment.getSegmentId()) {
-                tempSegment = this.startSegment;
-            } else {
-                tempSegment = createAndOpenSegment(this.path, this.name, DATA_SEGEMENT_EXT,
-                        tempSegmentId, this.initialSize);
-            }
-        }
-        return tempSegment;
+        dataStorageManager = new StorageSegmentManager(this.path, this.name, DATA_SEGEMENT_EXT,
+                dataSegmentCounter.getAndIncrement(), initialSize);
+        dataStorageManager.init(this.segmentType, DEFAULT_DATA_CACHE_TTL);
+        this.currentDataSegmentId = dataSegmentCounter.get();
+        this.currentDataSegmentOffset = 0;
+        mainHeader.startPosition = startPositionCounter.get();
+        mainHeader.tailPosition = tailPositionCounter.get();
+        writeMetadataHeader(mainHeader);
     }
 
     public boolean isEmpty() {
@@ -191,221 +223,162 @@ public class SegmentIndexer implements Iterable<byte[]> {
     }
 
     public int getTotalElements() {
-        return (int) mainHeader.totalElements;
+        return (int) (this.tailPositionCounter.get() - this.startPositionCounter.get());
     }
 
-    public int getTotalSegments() {
-        return segmentHeader.segments.size();
+    public long getStartIndex() {
+        return this.startPositionCounter.get();
+    }
+
+    private int getDataIndexSegmentId(long position) {
+        return (int) (position / TOTAL_NO_OF_DATA_INDEX_ELEMENTS);
+    }
+
+    private int getDataIndexOffset(long position) {
+        return (int) ((position % TOTAL_NO_OF_DATA_INDEX_ELEMENTS) * DATA_INDEX_ELEMENT_HEADER);
     }
 
     /**
      * @param buff
-     * @param offset
-     * @param count
      */
-    public void writeToSegment(byte[] buff, int offset, int count) {
+    public void writeToSegment(byte[] buff) {
+        logger.debug("before write in writeSegment() " + mainHeader);
         if (buff == null || buff.length == 0) {
             throw new RuntimeException("Can not write empty buffer");
         }
-        int position = mainHeader.tailPosition;
-        StorageSegment segment = tailSegment;
-        int remain = segment.remaining(position);
-        Element element = null;
-        List<StorageSegment> closeSegments = new ArrayList<>();
-        if (remain >= Element.ELEMENT_HEADER_LENGTH) {
-            writeDataLength(segment, position, count);
-            position += Element.ELEMENT_HEADER_LENGTH;
-            element = writeElementToSegment(segment, position, buff, offset, count, closeSegments);
-        } else {
-            closeSegments.add(segment);
-            segment = createAndOpenSegment(this.path, this.name, DATA_SEGEMENT_EXT, segmentCounter.getAndIncrement(),
-                    this.initialSize);
-            position = 0;
-            writeDataLength(segment, position, count);
-            position += Element.ELEMENT_HEADER_LENGTH;
-            element = writeElementToSegment(segment, position, buff, offset, count, closeSegments);
-        }
-        mainHeader.tailSegmentId = element.segment.getSegmentId();
-        if (tailSegment.getSegmentId() != mainHeader.tailSegmentId) {
-            //tailSegment.close(false);
-            tailSegment = element.segment;
-        }
-        mainHeader.tailPosition = element.position;
-        mainHeader.totalElements++;
-        writeMetadataHeader();
-        for (StorageSegment tempSegment : closeSegments) {
-            int tempSegmentId = tempSegment.getSegmentId();
-            if (tempSegmentId != mainHeader.startSegmentId) {
-                tempSegment.close(false);
-            }
-        }
-    }
-
-    private void writeDataLength(StorageSegment segment, int position, int dataLength) {
-        byte[] buff = new byte[Element.ELEMENT_HEADER_LENGTH];
-        //write Element length as 4 bytes to data segment
-        PersistentUtil.writeInt(buff, 0, dataLength);
-        segment.write(position, buff, 0, Element.ELEMENT_HEADER_LENGTH);
-    }
-
-    private Element writeElementToSegment(StorageSegment segment, int position, byte[] buff, int offset, int count,
-                                          List<StorageSegment> closeSegments) {
-        int remain = segment.remaining(position);
-        if (remain >= count) {
-            segment.write(position, buff, offset, count);
-            position += count;
-        } else {
-            segment.write(position, buff, offset, remain);
-            closeSegments.add(segment);
-            int currentOffset = offset + remain;
-            int currentRemainBytes = count - remain;
-            while (currentRemainBytes > 0) {
-                segment = createAndOpenSegment(this.path, this.name, DATA_SEGEMENT_EXT,
-                        segmentCounter.getAndIncrement(), this.initialSize);
-                position = 0;
-                remain = segment.remaining(position);
-                if (remain >= currentRemainBytes) {
-                    segment.write(0, buff, currentOffset, currentRemainBytes);
-                    position = currentRemainBytes;
-                    currentRemainBytes = 0;
-                } else {
-                    segment.write(0, buff, currentOffset, remain);
-                    currentOffset += remain;
-                    currentRemainBytes -= remain;
-                    segmentHeader.addSegment(segment.getSegmentId());
-                    //segment.close(false);
-                    closeSegments.add(segment);
+       /* if (buff.length >= this.initialSize) {
+            throw new RuntimeException("buffer size is greater than default file size. " +
+                    "Either increase initial size or reduce buffer size");
+        }*/
+        int dataIndexSegmentId = 0;
+        dataWriteLock.lock();
+        try {
+            //update data segment
+            boolean isBigSizeBuffer = false;
+            if (this.currentDataSegmentOffset + buff.length > this.initialSize) {
+                if (buff.length > this.initialSize) {
+                    isBigSizeBuffer = true;
                 }
+                this.currentDataSegmentId++;
+                this.currentDataSegmentOffset = 0;
             }
+            StorageSegment segment = null;
+            if (!isBigSizeBuffer) {
+                segment = dataStorageManager.acquireSegment(this.currentDataSegmentId);
+            } else {
+                segment = dataStorageManager.acquireSegment(this.currentDataSegmentId, buff.length);
+            }
+            segment.write(this.currentDataSegmentOffset, buff);
+
+            //update data index segment
+            dataIndexSegmentId = getDataIndexSegmentId(this.tailPositionCounter.get());
+            int dataIndexItemOffset = getDataIndexOffset(this.tailPositionCounter.get());
+            StorageSegment dataIndexSegment = dataIndexStorageManager.acquireSegment(dataIndexSegmentId);
+            ByteBuffer buffer = dataIndexSegment.getByteBuffer(dataIndexItemOffset);
+            buffer.putInt(this.currentDataSegmentId);
+            buffer.putInt(this.currentDataSegmentOffset);
+            buffer.putInt(buff.length);
+            buffer.putLong(System.currentTimeMillis());
+
+            this.currentDataSegmentOffset += buff.length;
+            this.tailPositionCounter.incrementAndGet();
+
+            //update metadata segment
+            MainHeader mHeader = new MainHeader();
+            mHeader.tailPosition = this.tailPositionCounter.get();
+            mHeader.startPosition = mainHeader.startPosition;
+            writeMetadataHeader(mHeader);
+            writeCounter.incrementAndGet();
+            if (writeCounter.get() % 1000000 == 0) {
+                logger.debug("write segment:" + mainHeader);
+                StringBuffer sb = new StringBuffer();
+                sb.append("index :").append(dataIndexStorageManager);
+                sb.append(", data :").append(dataStorageManager);
+                logger.debug("Cache details [" + sb.toString() + "]");
+                writeCounter = new AtomicInteger(0);
+            }
+        } finally {
+            dataStorageManager.releaseSegment(this.currentDataSegmentId);
+            dataIndexStorageManager.releaseSegment(dataIndexSegmentId);
+            dataWriteLock.unlock();
         }
-        segmentHeader.addSegment(segment.getSegmentId());
-        Element element = new Element(position, count);
-        element.segment = segment;
-        return element;
+
+        logger.debug("after write in writeSegment() " + mainHeader);
     }
 
-    public byte[] readFromSegment(boolean movePositionAfterRead) {
-        if (mainHeader.startSegmentId == mainHeader.tailSegmentId &&
-                mainHeader.startPosition == mainHeader.tailPosition) {
+    public byte[] readFromSegment() {
+        logger.debug("begin readSegment " + mainHeader);
+        byte[] buff = null;
+        dataReadLock.lock();
+        try {
+            buff = readElementFromSegment(mainHeader.startPosition, true);
+            readCounter.incrementAndGet();
+            if (readCounter.get() % 1000000 == 0) {
+                logger.debug("read segment:" + mainHeader);
+                StringBuffer sb = new StringBuffer();
+                sb.append("index :").append(dataIndexStorageManager);
+                sb.append(", data :").append(dataStorageManager);
+                logger.debug("Cache details [" + sb.toString() + "]");
+                readCounter = new AtomicInteger(0);
+            }
+        } finally {
+            dataReadLock.unlock();
+        }
+        logger.debug("end readSegment " + mainHeader);
+        return buff;
+    }
+
+    public byte[] readElementFromSegment(long index, boolean markForDelete) {
+        if (mainHeader.startPosition == mainHeader.tailPosition) {
             return null;
         }
-        int position = mainHeader.startPosition;
-        StorageSegment segment = startSegment;
-        List<StorageSegment> closeSegmentList = new ArrayList<>();
-        Element element = readElementFromSegment(segment, position, closeSegmentList, movePositionAfterRead);
-        if (movePositionAfterRead) {
-            mainHeader.startSegmentId = element.segment.getSegmentId();
-            if (startSegment.getSegmentId() != mainHeader.startSegmentId) {
-                //startSegment.close(false);
-                startSegment = element.segment;
+        int dataIndexSegmentId = 0;
+        int dataSegmentId = 0;
+        byte[] buff = null;
+        try {
+            dataIndexSegmentId = getDataIndexSegmentId(index);
+            int dataIndexItemOffset = getDataIndexOffset(index);
+            StorageSegment dataIndexSegment = dataIndexStorageManager.acquireSegment(dataIndexSegmentId);
+            ByteBuffer buffer = dataIndexSegment.getByteBuffer(dataIndexItemOffset);
+            dataSegmentId = buffer.getInt();
+            int dataItemOffset = buffer.getInt();
+            int dataLength = buffer.getInt();
+            StorageSegment dataSegment = null;
+            if (dataLength < this.initialSize) {
+                dataSegment = dataStorageManager.acquireSegment(dataSegmentId);
+            } else {
+                dataSegment = dataStorageManager.acquireSegment(dataSegmentId, dataLength);
             }
-            mainHeader.startPosition = element.position;
-            mainHeader.totalElements--;
-            for (StorageSegment tempSegment : closeSegmentList) {
-                int tempSegmentId = tempSegment.getSegmentId();
-                if (tempSegmentId != mainHeader.startSegmentId) {
-                    segmentHeader.removeSegment(tempSegmentId);
-                    tempSegment.close(true);
-                }
+            if (printReadSegInfo){
+                logger.debug("read is at [index:" + dataIndexSegmentId +", ioffset:" + dataIndexItemOffset +
+                        ", data:" + dataSegmentId +", doffset:" + dataItemOffset + "]");
             }
-            writeMetadataHeader();
-        } else {
-            for (StorageSegment tempSegment : closeSegmentList) {
-                int tempSegmentId = tempSegment.getSegmentId();
-                if (tempSegmentId != mainHeader.startSegmentId && tempSegmentId != mainHeader.tailSegmentId) {
-                    //segmentHeader.removeSegment(tempSegmentId);
-                    tempSegment.close(false);
-                }
+            buff = dataSegment.read(dataItemOffset, 0, dataLength);
+            printReadSegInfo = false;
+            if (previousReadDataIndexSegmentId != dataIndexSegmentId && markForDelete) {
+                dataIndexStorageManager.markForDelete(previousReadDataIndexSegmentId);
+                logger.debug("data index seg to close:" + previousReadDataIndexSegmentId);
+                printReadSegInfo = true;
             }
-        }
-        return element.buff;
-    }
-
-    private Element readElementFromSegment(StorageSegment segment, int position,
-                                           List<StorageSegment> closeSegmentList,
-                                           boolean movePositionAfterRead) {
-        int dataLength = 0;
-        Element element = null;
-        int segmentId = segment.getSegmentId();
-        int remain = segment.remaining(position);
-        //Check element.ELEMENT_HEADER_LENGTH should fit into remaining bytes
-        if (remain >= Element.ELEMENT_HEADER_LENGTH) {
-            dataLength = readDataLengthFromSegment(segment, position);
-            position += Element.ELEMENT_HEADER_LENGTH;
-            element = readElementFromSegment(segment, position,
-                    dataLength, closeSegmentList, movePositionAfterRead);
-        } else {
-            closeSegmentList.add(segment);
-            segment = getNextSegment(segmentId);
-            position = 0;
-            dataLength = readDataLengthFromSegment(segment, position);
-            position += Element.ELEMENT_HEADER_LENGTH;
-            element = readElementFromSegment(segment, position, dataLength,
-                    closeSegmentList, movePositionAfterRead);
-        }
-        return element;
-    }
-
-    private int readDataLengthFromSegment(StorageSegment segment, int position) {
-        byte[] buff = new byte[Element.ELEMENT_HEADER_LENGTH];
-        segment.read(position, buff, 0, buff.length);
-        int dataLength = PersistentUtil.readInt(buff, 0);
-        return dataLength;
-    }
-
-    private Element readElementFromSegment(StorageSegment segment, int position, int dataLength,
-                                           List<StorageSegment> closeSegmentList,
-                                           boolean movePositionAfterRead) {
-        byte[] buff = new byte[dataLength];
-        int offset = 0;
-        int segmentId = segment.getSegmentId();
-        int remain = segment.remaining(position);
-        if (dataLength > 0 && remain >= dataLength) {
-            segment.read(position, buff, offset, dataLength);
-            position += dataLength;
-        } else {
-            segment.read(position, buff, offset, remain);
-            closeSegmentList.add(segment);
-            int currentOffset = offset + remain;
-            int currentRemainBytes = dataLength - remain;
-            while (currentRemainBytes > 0) {
-                segment = getNextSegment(segmentId);
-                segmentId = segment.getSegmentId();
-                position = 0;
-                remain = segment.remaining(position);
-                if (remain >= currentRemainBytes) {
-                    segment.read(position, buff, currentOffset, currentRemainBytes);
-                    position = currentRemainBytes;
-                    currentRemainBytes = 0;
-                    if (!movePositionAfterRead) {
-                        closeSegmentList.add(segment);
-                    }
-                } else {
-                    segment.read(position, buff, currentOffset, remain);
-                    currentOffset += remain;
-                    currentRemainBytes -= remain;
-                    closeSegmentList.add(segment);
-                }
+            if (previousReadDataSegmentId != dataSegmentId && markForDelete) {
+                dataStorageManager.markForDelete(previousReadDataSegmentId);
+                logger.debug("data seg to close:" + previousReadDataSegmentId);
+                printReadSegInfo = true;
             }
+            if (markForDelete) {
+                this.startPositionCounter.incrementAndGet();
+                MainHeader mHeader = new MainHeader();
+                mHeader.startPosition = this.startPositionCounter.get();
+                mHeader.tailPosition = mainHeader.tailPosition;
+                writeMetadataHeader(mHeader);
+            }
+            previousReadDataIndexSegmentId = dataIndexSegmentId;
+            previousReadDataSegmentId = dataSegmentId;
+        } finally {
+            dataIndexStorageManager.releaseSegment(dataIndexSegmentId);
+            dataStorageManager.releaseSegment(dataSegmentId);
         }
-        Element header = new Element(position, dataLength);
-        header.buff = buff;
-        header.segment = segment;
-        return header;
-    }
-
-    private StorageSegment createAndOpenSegment(String path, String name, String ext,
-                                                int segmentId, int initialSize) {
-        StorageSegment storageSegment = null;
-        //TODO: Need to move to factory class
-        if (StorageSegment.SegmentType.MEMORYMAPPED.toString().equalsIgnoreCase(segmentType.toString())) {
-            storageSegment = new MemoryMappedSegment();
-            storageSegment.init(path, name, ext, segmentId, initialSize);
-        } else {
-            storageSegment = new FileSegment();
-            storageSegment.init(path, name, ext, segmentId, initialSize);
-        }
-        return storageSegment;
+        return buff;
     }
 
     public void remove() {
@@ -425,7 +398,7 @@ public class SegmentIndexer implements Iterable<byte[]> {
             throw new NoSuchElementException();
         }
         for (int i = 0; i < elements; i++) {
-            readFromSegment(true);
+            readFromSegment();
         }
     }
 
@@ -435,28 +408,37 @@ public class SegmentIndexer implements Iterable<byte[]> {
     }
 
     public void close(boolean delete) {
-        metadataSegment.close(delete);
-        startSegment.close(delete);
-        tailSegment.close(delete);
-        for (int tempSegmentId : segmentHeader.segments) {
-            StorageSegment tempSegment = getSegment(tempSegmentId);
-            if (tempSegmentId != startSegment.getSegmentId() &&
-                    tempSegmentId != tailSegment.getSegmentId()) {
-                tempSegment.close(true);
-            }
+        try {
+            this.metadataStorageManager.close(delete);
+            this.dataIndexStorageManager.close(delete);
+            this.dataStorageManager.close(delete);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
-    public void writeMetadataHeader() {
-        metadataSegment.write(0, mainHeader.convertToBytes(), 0,
-                DEFAULT_METADATA_HEADER_LENGTH);
-        metadataSegment.write(DEFAULT_METADATA_HEADER_LENGTH, segmentHeader.convertToBytes(),
-                0, segmentHeader.length);
+    public void writeMetadataHeader(MainHeader mHeader) {
+        metadataWriteLock.lock();
+        try {
+            StorageSegment metadataSegment = metadataStorageManager.acquireSegment(0);
+            mainHeader.startPosition = mHeader.startPosition;
+            mainHeader.tailPosition = mHeader.tailPosition;
+            metadataSegment.write(0, mainHeader.convertToBytes());
+        } finally {
+            metadataStorageManager.releaseSegment(0);
+            metadataWriteLock.unlock();
+        }
     }
 
     public void readMetadataHeader() {
-        byte[] mainBuff = new byte[DEFAULT_METADATA_HEADER_LENGTH];
-        metadataSegment.read(0, mainBuff, 0, DEFAULT_METADATA_HEADER_LENGTH);
+        Lock readLock = metadataLock.readLock();
+        try {
+            StorageSegment metadataSegment = metadataStorageManager.acquireSegment(0);
+            byte[] mainBuff = metadataSegment.read(0, 0, DEFAULT_METADATA_HEADER_LENGTH);
+        } finally {
+            metadataStorageManager.releaseSegment(0);
+            readLock.unlock();
+        }
     }
 
     @Override
@@ -470,9 +452,7 @@ public class SegmentIndexer implements Iterable<byte[]> {
     private final class ElementIterator implements Iterator<byte[]> {
 
         int currentIndex = 0;
-        int currentPosition = mainHeader.startPosition;
-        StorageSegment currentSegment = startSegment;
-        List<StorageSegment> dummyCloseSegments = new ArrayList<>();
+        long currentPosition = mainHeader.startPosition;
         int currentTotalElements = getTotalElements();
 
         ElementIterator() {
@@ -496,12 +476,16 @@ public class SegmentIndexer implements Iterable<byte[]> {
             if (isEmpty()) {
                 throw new NoSuchElementException();
             }
-            Element element = readElementFromSegment(currentSegment, currentPosition,
-                    dummyCloseSegments, false);
-            this.currentIndex++;
-            this.currentPosition = element.position;
-            this.currentSegment = element.segment;
-            return element.buff;
+            byte[] buff = null;
+            dataReadLock.lock();
+            try {
+                buff = readElementFromSegment(currentPosition, false);
+                this.currentIndex++;
+                this.currentPosition++;
+            } finally {
+                dataReadLock.unlock();
+            }
+            return buff;
         }
 
         @Override
@@ -512,82 +496,35 @@ public class SegmentIndexer implements Iterable<byte[]> {
         }
     }
 
+    public void printStats() {
+    }
+
     private static class MainHeader {
         private int version = 1;
-        private long totalElements;
-        private int startSegmentId;
-        private int startPosition;
-        private int tailSegmentId;
-        private int tailPosition;
+        private long startPosition;
+        private long tailPosition;
 
         private byte[] convertToBytes() {
             byte[] buff = new byte[DEFAULT_METADATA_HEADER_LENGTH];
             PersistentUtil.writeInt(buff, 0, version);
-            PersistentUtil.writeLong(buff, 4, totalElements);
-            PersistentUtil.writeInt(buff, 12, startSegmentId);
-            PersistentUtil.writeInt(buff, 16, startPosition);
-            PersistentUtil.writeInt(buff, 20, tailSegmentId);
-            PersistentUtil.writeInt(buff, 24, tailPosition);
+            PersistentUtil.writeLong(buff, 4, startPosition);
+            PersistentUtil.writeLong(buff, 12, tailPosition);
+
             return buff;
         }
 
         private void readBytes(byte[] buff) {
             version = PersistentUtil.readInt(buff, 0);
-            totalElements = PersistentUtil.readLong(buff, 4);
-            startSegmentId = PersistentUtil.readInt(buff, 12);
-            startPosition = PersistentUtil.readInt(buff, 16);
-            tailSegmentId = PersistentUtil.readInt(buff, 20);
-            tailPosition = PersistentUtil.readInt(buff, 24);
-        }
-    }
-
-    private static class SegmentHeader {
-        //To write total segment count, it's 4 bytes
-        private int SEGMENT_HEADER_LENGTH = 4;
-        //Total segments to read
-        private int length;
-        //each segment 4 bytes * total segments
-        private List<Integer> segments = new ArrayList<>();
-
-        private byte[] convertToBytes() {
-            ByteBuffer byteBuff = ByteBuffer.allocate(length);
-            IntBuffer intBuffer = byteBuff.asIntBuffer();
-            intBuffer.put(length);
-            int[] segmentsArray = new int[segments.size()];
-            int i = 0;
-            for (int seg : segments) {
-                segmentsArray[i] = seg;
-                i++;
-            }
-            intBuffer.put(segmentsArray);
-            return byteBuff.array();
+            startPosition = PersistentUtil.readLong(buff, 4);
+            tailPosition = PersistentUtil.readLong(buff, 12);
         }
 
-        private void addSegment(int segmentId) {
-            if (!this.segments.contains(segmentId)) {
-                this.segments.add(segmentId);
-                length = SEGMENT_HEADER_LENGTH + segments.size() * 4;
-            }
-        }
-
-        private void removeSegment(int segmentId) {
-            if (this.segments.contains(segmentId)) {
-                this.segments.remove(this.segments.indexOf(segmentId));
-                length -= 4;
-            }
-        }
-    }
-
-    private static class Element {
-        private static int ELEMENT_HEADER_LENGTH = 4;
-        private int position;
-        private int length;
-        private byte[] buff;
-        private StorageSegment segment;
-
-        Element(int position, int length) {
-            this.position = position;
-            this.length = length;
+        public String toString() {
+            StringBuffer sb = new StringBuffer();
+            sb.append("mainheader[ start pos:").append(startPosition)
+                    .append(", tail pos:").append(tailPosition)
+                    .append("] ");
+            return sb.toString();
         }
     }
 }

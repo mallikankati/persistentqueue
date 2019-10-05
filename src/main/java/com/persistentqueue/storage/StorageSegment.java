@@ -1,11 +1,14 @@
 package com.persistentqueue.storage;
 
+import java.io.Closeable;
+import java.nio.ByteBuffer;
+
 /**
  * Each segment of storage is backed by {@link java.nio.MappedByteBuffer} or {@link java.io.RandomAccessFile}.
  * <p>
  * It creates a file if doesn't exist and open for read/write. When it closes it will cleanup MappedByteBuffer underneath.
  */
-public interface StorageSegment {
+public interface StorageSegment extends Closeable {
 
     enum SegmentType {
         FILE {
@@ -19,6 +22,7 @@ public interface StorageSegment {
             }
         }
     };
+
 
     /**
      * Is this segment open for read/write
@@ -49,22 +53,26 @@ public interface StorageSegment {
      * Reading bytes from file
      *
      * @param position starting position
-     * @param buff     buffer to read into
-     * @param offset   offset to start
-     * @param count    total bytes to read
+     * @param offset
+     * @param count
      */
-    void read(long position, byte[] buff, int offset, int count);
+    byte[] read(long position, int offset, int count);
 
     /**
      * Write the data to storage
      *
      * @param position position to start writing
      * @param buff     byte array
-     * @param offset   offset to start
-     * @param count    total bytes
      */
-    void write(long position, byte[] buff, int offset, int count);
+    void write(long position, byte[] buff);
 
+    /**
+     * Buffer underneath
+     *
+     * @param position
+     * @return
+     */
+    ByteBuffer getByteBuffer(long position);
     /**
      * It will calculate given data length fits in the storage
      *
@@ -96,11 +104,18 @@ public interface StorageSegment {
     int remaining(int position);
 
     /**
-     * Closes open files or buffers
+     * Delete from underneath storage
      *
-     * @param delete delete underneath the storage when it closed
+     * @return
      */
-    void close(boolean delete);
+    boolean isDelete();
+
+    /**
+     * Set delete flag
+     *
+     * @param delete
+     */
+    void setDelete(boolean delete);
 
     /**
      * Path where it stores the data. In this case it's a directory
