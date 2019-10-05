@@ -1,6 +1,10 @@
 package com.persistentqueue.storage.utils;
 
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -115,6 +119,16 @@ public final class PersistentUtil {
             Thread.sleep(timeInMillis);
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    public static void deleteDirectory(Path path) {
+        try {
+            Files.walk(path)
+                    .sorted(Comparator.reverseOrder())
+                    .map(Path::toFile)
+                    .forEach(File::delete);
+        } catch (Exception ignore) {
         }
     }
 }

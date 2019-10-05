@@ -12,7 +12,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Cache the {@link StorageSegment} and provides memory usage under control.
@@ -44,7 +46,7 @@ public class StorageSegmentManager {
 
     private Map<Integer, Object> segmentLocks = new HashMap<>();
 
-    private ReentrantLock totalLock = new ReentrantLock();
+    private ReadWriteLock totalLock = new ReentrantReadWriteLock();
 
     private ExecutorService executorService = Executors.newCachedThreadPool();
 
@@ -85,7 +87,7 @@ public class StorageSegmentManager {
     }
 
     public void close(boolean delete) {
-        totalLock.lock();
+        totalLock.writeLock().lock();
         try {
             for (CacheValue cacheValue : cache.values()) {
                 try {
@@ -101,7 +103,7 @@ public class StorageSegmentManager {
                 cache.clear();
             }
         } finally {
-            totalLock.unlock();
+            totalLock.writeLock().unlock();
         }
         executorService.shutdown();
     }
@@ -115,14 +117,14 @@ public class StorageSegmentManager {
         if (cacheValue == null) {
             Object segmentLock = null;
             try {
-                totalLock.lock();
+                totalLock.writeLock().lock();
                 try {
                     if (!segmentLocks.containsKey(segmentId)) {
                         segmentLocks.put(segmentId, new Object());
                     }
                     segmentLock = segmentLocks.get(segmentId);
                 } finally {
-                    totalLock.unlock();
+                    totalLock.writeLock().unlock();
                 }
                 synchronized (segmentLock) {
                     cacheValue = cache.get(segmentId);
@@ -131,17 +133,19 @@ public class StorageSegmentManager {
                     }
                 }
             } finally {
-                totalLock.lock();
+                totalLock.writeLock().lock();
                 try {
                     //if you don't remove, who will cleanup from this map
                     segmentLocks.remove(segmentId);
                 } finally {
-                    totalLock.unlock();
+                    totalLock.writeLock().unlock();
                 }
             }
         } else {
-            cacheValue.lastAccessTime = System.currentTimeMillis();
-            cacheValue.refCount.incrementAndGet();
+            synchronized (segmentId+"") {
+                cacheValue.lastAccessTime = System.currentTimeMillis();
+                cacheValue.refCount.incrementAndGet();
+            }
         }
 
         return cacheValue.storageSegment;
@@ -179,9 +183,14 @@ public class StorageSegmentManager {
     }
 
     public void releaseSegment(int segmentId) {
-        CacheValue cacheValue = cache.get(segmentId);
-        if (cacheValue != null) {
-            cacheValue.refCount.decrementAndGet();
+        try {
+            totalLock.readLock().lock();
+            CacheValue cacheValue = cache.get(segmentId);
+            if (cacheValue != null) {
+                cacheValue.refCount.decrementAndGet();
+            }
+        } finally {
+            totalLock.readLock().unlock();
         }
     }
 
@@ -202,7 +211,7 @@ public class StorageSegmentManager {
         }
 
         private boolean isExpired(long currentTime) {
-            return refCount.get() <= 0 && (currentTime > (lastAccessTime + ttl));
+            return refCount.get() <= 0 && (currentTime > (lastAccessTime + ttl) && storageSegment.isDelete());
         }
     }
 
@@ -228,12 +237,15 @@ public class StorageSegmentManager {
 
         @Override
         public void run() {
+            String currentTName = Thread.currentThread().getName();
+            String derivedName = "cleaner-" + ext.replace(".", "").trim();
+            Thread.currentThread().setName(derivedName);
             try {
                 if (!closeSegments.isEmpty()) {
                     for (StorageSegment tempSegment : closeSegments) {
                         logger.debug("Cleanup in progress for segment [ ext:" + tempSegment.getExtension() +
-                                ", id:" + tempSegment.getSegmentId() + "]");
-                        if (!tempSegment.isClosed()) {
+                                ", id:" + tempSegment.getSegmentId() + ", delete:" + tempSegment.isDelete() + "]");
+                        if (!tempSegment.isClosed() && tempSegment.isDelete()) {
                             tempSegment.close();
                         }
                         cache.remove(tempSegment.getSegmentId());
@@ -242,11 +254,12 @@ public class StorageSegmentManager {
             } catch (Exception e) {
                 logger.info(e.getMessage(), e);
             } finally {
+                Thread.currentThread().setName(currentTName);
             }
         }
     }
 
-    public String toString(){
+    public String toString() {
         StringBuffer sb = new StringBuffer();
         sb.append("storageManager [ ext:").append(this.ext);
         sb.append(", size:" + this.getCachedSegments());

@@ -47,7 +47,11 @@ pipeline {
                 ENV_NAME = "\${env.BRANCH_NAME}"
             }
             when {
-                branch 'develop'
+                anyof{
+                    branch 'develop';
+                    branch 'master';
+                    tag '*'
+                }
             }
             steps {
                 echo 'Publishing Branch: ' + ENV_NAME

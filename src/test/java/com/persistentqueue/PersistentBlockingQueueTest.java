@@ -16,7 +16,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
 
 public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
 
@@ -27,6 +26,17 @@ public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
                 .path(this.path)
                 .name(this.name)
                 .fileSize(this.initialSize)
+                .typeClass(typeClass)
+                .blocking(true)
+                .build();
+        return pq;
+    }
+
+    private <T> PersistentBlockingQueue<T> getPersistentQueue(Class<T> typeClass, int initialSize) {
+        PersistentBlockingQueue<T> pq = new PersistentQueueBuilder<T>()
+                .path(this.path)
+                .name(this.name)
+                .fileSize(initialSize)
                 .typeClass(typeClass)
                 .blocking(true)
                 .build();
@@ -78,7 +88,7 @@ public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
         try {
             int numElements = 10;
             String prefix = "This is a test";
-            Producer<String> producer = new Producer<>(pq, numElements, prefix);
+            Producer<String> producer = new Producer<>(pq, numElements, 1, prefix);
             threadPool.submit(producer);
             producer.latch.await();
             try {
@@ -108,11 +118,11 @@ public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
         PersistentBlockingQueue<String> pq = getPersistentQueue(String.class);
         try {
             int numElements = 2000;
-            threadPool.submit(new Producer<>(pq, 400, "This is first thread"));
-            threadPool.submit(new Producer<>(pq, 400, "This is second thread"));
-            threadPool.submit(new Producer<>(pq, 400,"This is third thread"));
-            threadPool.submit(new Producer<>(pq, 400,"This is fourth thread"));
-            threadPool.submit(new Producer<>(pq, 400,"This is fifth thread"));
+            threadPool.submit(new Producer<>(pq, 400, 0, "This is first thread"));
+            threadPool.submit(new Producer<>(pq, 400, 1, "This is second thread"));
+            threadPool.submit(new Producer<>(pq, 400, 2, "This is third thread"));
+            threadPool.submit(new Producer<>(pq, 400, 3, "This is fourth thread"));
+            threadPool.submit(new Producer<>(pq, 400, 4, "This is fifth thread"));
             try {
                 List<String> list = new ArrayList<>();
                 int tempCount = PersistentUtil.drain(pq, list, numElements, Long.MAX_VALUE, TimeUnit.NANOSECONDS);
@@ -130,20 +140,64 @@ public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
         }
     }
 
+    @Test
+    public void testPutAndDrainWithMultipleDrainerThreads() {
+        int tempInitialSize = 64 * 1024 * 1024;
+        PersistentBlockingQueue<String> pq = getPersistentQueue(String.class, tempInitialSize);
+        boolean loadTest = false;
+        try {
+            int loopCount = 1;
+            int totalElements = 10000;
+            if (loadTest) {
+                loopCount = 10;
+                totalElements = 1000000;
+            }
+            for (int j = 0; j < loopCount; j++) {
+                logger.info("iteration :" + j);
+
+                logger.info("Total elements:" + totalElements);
+                long startTime = System.currentTimeMillis();
+                for (int i = 0; i < 5; i++) {
+                    threadPool.submit(new Producer<>(pq, totalElements / 5, i, oneKBText));
+                }
+                CountDownLatch latch = new CountDownLatch(2);
+                Drainer<String> drainer1 = new Drainer<>(pq, latch, totalElements / 2, 0);
+                Drainer<String> drainer2 = new Drainer<>(pq, latch, totalElements / 2, 1);
+                threadPool.submit(drainer1);
+                threadPool.submit(drainer2);
+                latch.await();
+                long endTime = System.currentTimeMillis();
+                List<String> list = drainer1.list;
+                list.addAll(drainer2.list);
+                Assert.assertEquals("Total retrieved elements from drainer threads ", totalElements, list.size());
+                Assert.assertEquals("Queue size should be zero ", 0, pq.size());
+                logger.info("Total time for processing:" + (endTime - startTime) + "millis");
+            }
+        } catch (Exception e) {
+            logger.debug(e.getMessage(), e);
+        } finally {
+            pq.close();
+        }
+    }
+
     private class Producer<T> implements Callable<Void> {
         int numElements;
         BlockingQueue<T> q;
+        int threadNum;
         String prefix;
         CountDownLatch latch = new CountDownLatch(1);
 
-        Producer(BlockingQueue<T> q, int numElements, String prefix) {
+        Producer(BlockingQueue<T> q, int numElements, int threadNum, String prefix) {
             this.q = q;
             this.numElements = numElements;
+            this.threadNum = threadNum;
             this.prefix = prefix;
         }
 
         @Override
         public Void call() throws Exception {
+            String currentName = Thread.currentThread().getName();
+            Thread.currentThread().setName("producer-" + threadNum);
             try {
                 for (int i = 0; i < numElements; i++) {
                     if (prefix != null) {
@@ -156,8 +210,45 @@ public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
                 }
             } finally {
                 latch.countDown();
+                Thread.currentThread().setName(currentName);
             }
             return null;
+        }
+    }
+
+    private class Drainer<T> implements Callable<List<T>> {
+        int numElements;
+        BlockingQueue<T> q;
+        List<T> list;
+        int threadNum;
+        CountDownLatch latch;
+
+        Drainer(BlockingQueue<T> q, CountDownLatch latch, int numElements, int threadNum) {
+            this.q = q;
+            this.latch = latch;
+            this.numElements = numElements;
+            this.threadNum = threadNum;
+        }
+
+        @Override
+        public List<T> call() throws Exception {
+            List<T> list = new ArrayList<>();
+            String currentName = Thread.currentThread().getName();
+            Thread.currentThread().setName("consumer-" + threadNum);
+            try {
+                int tempCount = PersistentUtil.drain(this.q, list, numElements, Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+                Assert.assertEquals("Retrieved elements count not matching part of drain", numElements, tempCount);
+                Assert.assertEquals("Retrieved elements count not matching", numElements, list.size());
+                Assert.assertEquals("After retrieval queue should be empty", true, this.q.isEmpty());
+                Assert.assertEquals("After retrieval queue size should be zero", 0, this.q.size());
+            } catch (Exception e) {
+                logger.debug(e.getMessage(), e);
+            } finally {
+                this.list = list;
+                latch.countDown();
+                Thread.currentThread().setName(currentName);
+            }
+            return list;
         }
     }
 }

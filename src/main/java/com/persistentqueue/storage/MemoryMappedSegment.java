@@ -17,7 +17,6 @@ public class MemoryMappedSegment extends AbstractStorageSegment {
     /**
      * ThreadLocal MappedByteBuffer backed by this segment
      */
-    //private MappedByteBuffer mappedByteBuffer;
     private ThreadLocalBuffer threadLocalBuffer;
 
     @Override

@@ -216,13 +216,15 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
         boolean loadTest = false;
         try {
             int loopCount = 1;
+            int totalElements = 10000;
             if (loadTest){
                 loopCount = 1000;
+                totalElements = 1000000;
             }
             for (int j = 0; j < loopCount; j++) {
                 logger.info("iteration :" + j);
 
-                int totalElements = 1000000;
+
                 logger.info("Total elements:" + totalElements);
                 List<String> list = new ArrayList<>();
                 long startTime = System.currentTimeMillis();
