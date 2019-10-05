@@ -47,7 +47,7 @@ pipeline {
                 ENV_NAME = "\${env.BRANCH_NAME}"
             }
             when {
-                anyof{
+                anyOf{
                     branch 'develop';
                     branch 'master';
                     tag '*'
