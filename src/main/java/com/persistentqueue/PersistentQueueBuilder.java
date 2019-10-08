@@ -9,7 +9,6 @@ public class PersistentQueueBuilder<T> {
     private boolean blocking = false;
     private Class<T> typeClass;
     private Class<?>[] extraTypeClass;
-
     private StorageSegment.SegmentType segmentType;
 
     public PersistentQueueBuilder<T> path(String path) {
