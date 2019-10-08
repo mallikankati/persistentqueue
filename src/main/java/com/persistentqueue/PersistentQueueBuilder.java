@@ -8,6 +8,8 @@ public class PersistentQueueBuilder<T> {
     private int fileSize = 5*1024*1024; //default set to 5MB file
     private boolean blocking = false;
     private Class<T> typeClass;
+    private Class<?>[] extraTypeClass;
+
     private StorageSegment.SegmentType segmentType;
 
     public PersistentQueueBuilder<T> path(String path) {
@@ -30,6 +32,11 @@ public class PersistentQueueBuilder<T> {
         return this;
     }
 
+    public PersistentQueueBuilder<T> extraTypeClass(Class<?> ... typeClass) {
+        this.extraTypeClass = typeClass;
+        return this;
+    }
+
     public PersistentQueueBuilder<T> segmentType(StorageSegment.SegmentType segmentType) {
         this.segmentType = segmentType;
         return this;
@@ -48,7 +55,7 @@ public class PersistentQueueBuilder<T> {
     public PersistentQueue<T> build() {
         PersistentQueue<T> pq = null;
         pq = new PersistentQueue<>(this.path, this.name, this.fileSize);
-        pq.init(this.typeClass, this.segmentType);
+        pq.init(this.typeClass, this.segmentType, this.extraTypeClass);
         return pq;
     }
 
@@ -69,7 +76,7 @@ public class PersistentQueueBuilder<T> {
         public PersistentBlockingQueue<T> build() {
             PersistentBlockingQueue<T> pbq = new PersistentBlockingQueue<>(this.pqb.path,
                     this.pqb.name, this.pqb.fileSize, this.capacity);
-            pbq.init(this.pqb.typeClass, this.pqb.segmentType);
+            pbq.init(this.pqb.typeClass, this.pqb.segmentType, this.pqb.extraTypeClass);
             return pbq;
         }
     }

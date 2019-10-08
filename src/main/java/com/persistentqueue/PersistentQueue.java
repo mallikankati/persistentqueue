@@ -59,6 +59,7 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
      */
     protected Class<E> genericType;
 
+    protected Class<?>[] extraGenericType;
     /**
      * Directory to store files
      */
@@ -89,12 +90,13 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
         this.dataSegmentSize = dataSegmentSize;
     }
 
-    public void init(Class<E> typeClass, StorageSegment.SegmentType segmentType){
+    public void init(Class<E> typeClass, StorageSegment.SegmentType segmentType, Class<?> ... extraGenericType){
         this.genericType = typeClass;
         segmentIndexer = new SegmentIndexer();
         if (segmentType != null){
             segmentIndexer.setSegmentType(segmentType);
         }
+        this.extraGenericType = extraGenericType;
         segmentIndexer.initialize(this.path, this.name, this.dataSegmentSize);
     }
 
@@ -123,8 +125,14 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
         kryo.register(HashMap.class);
         kryo.register(LinkedHashMap.class);
         kryo.register(genericType);
+        if (extraGenericType != null && extraGenericType.length > 0){
+            for (Class<?> clzz : extraGenericType){
+                kryo.register(clzz);
+            }
+        }
         return kryo;
     }
+
    @Override
     public void close() {
        try {
@@ -133,6 +141,7 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
            throw new RuntimeException(e);
        }
     }
+
 
     @Override
     public Iterator<E> iterator() {

@@ -19,7 +19,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
 
     private static final Logger logger = LoggerFactory.getLogger(PersistentQueueTest.class);
 
-    private <T> PersistentQueue<T> getPersistentQueue(Class<T> typeClass) {
+    private <T> PersistentQueue<T> getPersistentQueue(Class<T> typeClass, Class<?> ... extraTypeClass) {
         /*PersistentQueue<T> pq = new PersistentQueueBuilder<T>()
                 .with($ -> {
                     $.path = this.path;
@@ -34,6 +34,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
                 .name(this.name)
                 .fileSize(this.initialSize)
                 .typeClass(typeClass)
+                .extraTypeClass(extraTypeClass)
                 .build();
         return pq;
     }
@@ -343,7 +344,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
 
     @Test
     public void testCustomObjects() {
-        PersistentQueue<Record> pq = getPersistentQueue(Record.class);
+        PersistentQueue<Record> pq = getPersistentQueue(Record.class, ChildRecord.class);
         try {
             int totalElements = 10000;
             for (int i = 0; i < totalElements; i++) {
@@ -367,6 +368,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
         private int value;
         private List<String> list = new ArrayList<>();
         private Map<String, String> map = new HashMap<>();
+        private ChildRecord childRecord;
 
         static Record createRecord(int index) {
             Record r = new Record();
@@ -380,6 +382,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
             map.put("Key" + index, "Value" + index);
             map.put("Key" + index + 1, "Value" + index + 1);
             r.map = map;
+            r.childRecord = ChildRecord.createChildRecord("child1",1);
             return r;
         }
 
@@ -407,6 +410,18 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
                 }
             }
             return true;
+        }
+    }
+
+    private static class ChildRecord {
+        private String childName;
+        private int childValue;
+
+        private static ChildRecord createChildRecord(String name, int value){
+            ChildRecord cr = new ChildRecord();
+            cr.childName = name;
+            cr.childValue = value;
+            return cr;
         }
     }
 }
