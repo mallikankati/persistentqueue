@@ -6,6 +6,7 @@ import com.esotericsoftware.kryo.io.Output;
 import com.esotericsoftware.kryo.util.Pool;
 import com.persistentqueue.storage.SegmentIndexer;
 import com.persistentqueue.storage.StorageSegment;
+import org.objenesis.strategy.StdInstantiatorStrategy;
 
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
@@ -121,6 +122,7 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
 
     private Kryo createKryo(){
         Kryo kryo = new Kryo();
+        kryo.setInstantiatorStrategy(new StdInstantiatorStrategy());
         kryo.register(ArrayList.class);
         kryo.register(HashMap.class);
         kryo.register(LinkedHashMap.class);
