@@ -21,23 +21,21 @@ public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
 
     private static final Logger logger = LoggerFactory.getLogger(PersistentBlockingQueue.class.getName());
 
-    private <T> PersistentBlockingQueue<T> getPersistentQueue(Class<T> typeClass) {
+    private <T> PersistentBlockingQueue<T> getPersistentQueue() {
         PersistentBlockingQueue<T> pq = new PersistentQueueBuilder<T>()
                 .path(this.path)
                 .name(this.name)
                 .fileSize(this.initialSize)
-                .typeClass(typeClass)
                 .blocking(true)
                 .build();
         return pq;
     }
 
-    private <T> PersistentBlockingQueue<T> getPersistentQueue(Class<T> typeClass, int initialSize) {
+    private <T> PersistentBlockingQueue<T> getPersistentQueue(int initialSize) {
         PersistentBlockingQueue<T> pq = new PersistentQueueBuilder<T>()
                 .path(this.path)
                 .name(this.name)
                 .fileSize(initialSize)
-                .typeClass(typeClass)
                 .blocking(true)
                 .build();
         return pq;
@@ -52,13 +50,13 @@ public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
 
     @Test
     public void testBuilder() {
-        PersistentBlockingQueue<String> pq = getPersistentQueue(String.class);
+        PersistentBlockingQueue<String> pq = getPersistentQueue();
         pq.close();
     }
 
     @Test
     public void testSimpleAddWithInteger() {
-        PersistentBlockingQueue<Integer> pq = getPersistentQueue(Integer.class);
+        PersistentBlockingQueue<Integer> pq = getPersistentQueue();
         try {
             int numElements = 10;
             for (int i = 0; i < numElements; i++) {
@@ -84,7 +82,7 @@ public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
 
     @Test
     public void testPutAndDrainWithOneThread() {
-        PersistentBlockingQueue<String> pq = getPersistentQueue(String.class);
+        PersistentBlockingQueue<String> pq = getPersistentQueue();
         try {
             int numElements = 10;
             String prefix = "This is a test";
@@ -115,7 +113,7 @@ public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
 
     @Test
     public void testPutAndDrainWithMultipleThreads() {
-        PersistentBlockingQueue<String> pq = getPersistentQueue(String.class);
+        PersistentBlockingQueue<String> pq = getPersistentQueue();
         try {
             int numElements = 2000;
             threadPool.submit(new Producer<>(pq, 400, 0, "This is first thread"));
@@ -143,7 +141,7 @@ public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
     @Test
     public void testPutAndDrainWithMultipleDrainerThreads() {
         int tempInitialSize = 64 * 1024 * 1024;
-        PersistentBlockingQueue<String> pq = getPersistentQueue(String.class, tempInitialSize);
+        PersistentBlockingQueue<String> pq = getPersistentQueue(tempInitialSize);
         boolean loadTest = false;
         try {
             int loopCount = 1;

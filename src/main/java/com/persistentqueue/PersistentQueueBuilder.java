@@ -7,9 +7,9 @@ public class PersistentQueueBuilder<T> {
     private String name;
     private int fileSize = 5*1024*1024; //default set to 5MB file
     private boolean blocking = false;
-    private Class<T> typeClass;
-    private Class<?>[] extraTypeClass;
+    //private Class<T> typeClass;
     private StorageSegment.SegmentType segmentType;
+    private PersistentQueueSerializer<T> serializer;
 
     public PersistentQueueBuilder<T> path(String path) {
         this.path = path;
@@ -26,18 +26,13 @@ public class PersistentQueueBuilder<T> {
         return this;
     }
 
-    public PersistentQueueBuilder<T> typeClass(Class<T> typeClass) {
-        this.typeClass = typeClass;
-        return this;
-    }
-
-    public PersistentQueueBuilder<T> extraTypeClass(Class<?> ... typeClass) {
-        this.extraTypeClass = typeClass;
-        return this;
-    }
-
     public PersistentQueueBuilder<T> segmentType(StorageSegment.SegmentType segmentType) {
         this.segmentType = segmentType;
+        return this;
+    }
+
+    public PersistentQueueBuilder<T> serializer(PersistentQueueSerializer<T> serializer) {
+        this.serializer = serializer;
         return this;
     }
 
@@ -54,7 +49,7 @@ public class PersistentQueueBuilder<T> {
     public PersistentQueue<T> build() {
         PersistentQueue<T> pq = null;
         pq = new PersistentQueue<>(this.path, this.name, this.fileSize);
-        pq.init(this.typeClass, this.segmentType, this.extraTypeClass);
+        pq.init(this.segmentType, this.serializer);
         return pq;
     }
 
@@ -75,7 +70,7 @@ public class PersistentQueueBuilder<T> {
         public PersistentBlockingQueue<T> build() {
             PersistentBlockingQueue<T> pbq = new PersistentBlockingQueue<>(this.pqb.path,
                     this.pqb.name, this.pqb.fileSize, this.capacity);
-            pbq.init(this.pqb.typeClass, this.pqb.segmentType, this.pqb.extraTypeClass);
+            pbq.init(this.pqb.segmentType, this.pqb.serializer);
             return pbq;
         }
     }
