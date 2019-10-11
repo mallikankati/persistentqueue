@@ -1,63 +1,54 @@
 package com.persistentqueue;
 
-import com.esotericsoftware.kryo.Kryo;
-import com.esotericsoftware.kryo.io.Input;
-import com.esotericsoftware.kryo.io.Output;
-import com.esotericsoftware.kryo.util.Pool;
 import com.persistentqueue.storage.SegmentIndexer;
 import com.persistentqueue.storage.StorageSegment;
 
-import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.util.AbstractQueue;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 
 /**
  * A reliable, efficient, file-based, FIFO queue. Add and remove operations take O(1) but underneath it can have multiple memory read/writes.
- *
+ * <p>
  * It combines the functionality from {@link https://github.com/square/tape/blob/master/tape/src/main/java/com/squareup/tape2/QueueFile.java}
  * and {@link https://github.com/VoltDB/voltdb/blob/master/src/frontend/org/voltdb/utils/PersistentBinaryDeque.java}
- *
+ * <p>
  * Off heap implementation of queue to survive sudden burst load to run with low memory profile. Data is backed by {@link java.nio.MappedByteBuffer}
  * for efficient writing. There is another implementation with {@link java.io.RandomAccessFile}
- *
+ * <p>
  * It can change between these two implementaion using {@link StorageSegment.SegmentType}
- *
+ * <p>
  * When Queue initialized it creates two files which contains metadata and data.
  * Add element to the queue, will create a data file and which grows max capacity and creates new files to store data.
  * Data removed from queue, will delete the files once every element deleted from the file.
- *
+ * <p>
  * Metadata file contains two headers
- *    MetadataHeader (total 28 bytes)
- *
- *        4 bytes      Version indicator
- *        8 bytes      Element count
- *        4 bytes      Head pointer segment
- *        4 bytes      Head pointer position
- *        4 bytes      Tail pointer segment
- *        4 bytes      Tail pointer position
- *
- *    SegmentHeader
- *        4 bytes      Total segments
- *        ....         Array of segments each 4 bytes in length
- *
+ * MetadataHeader (total 28 bytes)
+ * <p>
+ * 4 bytes      Version indicator
+ * 8 bytes      Element count
+ * 4 bytes      Head pointer segment
+ * 4 bytes      Head pointer position
+ * 4 bytes      Tail pointer segment
+ * 4 bytes      Tail pointer position
+ * <p>
+ * SegmentHeader
+ * 4 bytes      Total segments
+ * ....         Array of segments each 4 bytes in length
+ * <p>
  * Data file contains multiple data headers
- *    DataHeader
- *       4 bytes    Data length
- *       ....       data content
- *
- * It uses {@link Kryo} serializer/deserialize the objects
- *
+ * DataHeader
+ * 4 bytes    Data length
+ * ....       data content
+ * <p>
+ * It uses {@link PersistentQueueSerializer} to serializer/deserialize the objects
  */
 public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, Iterable<E> {
 
     /**
      * This is to track generic type
      */
-    protected Class<E> genericType;
+    //protected Class<E> genericType;
 
     /**
      * Directory to store files
@@ -78,61 +69,42 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
 
     protected boolean cleanStorageOnRestart = true;
 
+    protected PersistentQueueSerializer<E> serializer = new PersistentQueueSerializer<E>() {
+    };
+
     /**
      * Bytes needs to be compressed at serialize/deserialize
      */
     protected boolean compress = true;
 
-    public PersistentQueue(String path, String name, int dataSegmentSize){
+    public PersistentQueue(String path, String name, int dataSegmentSize) {
         this.path = path;
         this.name = name;
         this.dataSegmentSize = dataSegmentSize;
     }
 
-    public void init(Class<E> typeClass, StorageSegment.SegmentType segmentType){
-        this.genericType = typeClass;
+    public void init(StorageSegment.SegmentType segmentType,
+                     PersistentQueueSerializer<E> serializer) {
+        //this.genericType = typeClass;
         segmentIndexer = new SegmentIndexer();
-        if (segmentType != null){
+        if (segmentType != null) {
             segmentIndexer.setSegmentType(segmentType);
+        }
+        if (serializer != null) {
+            this.serializer = serializer;
         }
         segmentIndexer.initialize(this.path, this.name, this.dataSegmentSize);
     }
 
-    /*
-      // Pool constructor arguments: thread safe, soft references, maximum capacity
-     */
-    protected Pool<Kryo> serializePool = new Pool<Kryo>(true, false,
-            Runtime.getRuntime().availableProcessors()) {
-        @Override
-        protected Kryo create() {
-            return createKryo();
-        }
-    };
-
-    protected Pool<Kryo> deserializePool = new Pool<Kryo>(true, false,
-            Runtime.getRuntime().availableProcessors()) {
-        @Override
-        protected Kryo create() {
-            return createKryo();
-        }
-    };
-
-    private Kryo createKryo(){
-        Kryo kryo = new Kryo();
-        kryo.register(ArrayList.class);
-        kryo.register(HashMap.class);
-        kryo.register(LinkedHashMap.class);
-        kryo.register(genericType);
-        return kryo;
-    }
-   @Override
+    @Override
     public void close() {
-       try {
-           segmentIndexer.close(cleanStorageOnRestart);
-       }catch (Exception e){
-           throw new RuntimeException(e);
-       }
+        try {
+            segmentIndexer.close(cleanStorageOnRestart);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
+
 
     @Override
     public Iterator<E> iterator() {
@@ -170,8 +142,8 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
         segmentIndexer.clear();
     }
 
-    protected byte[] serialize(E e){
-       Kryo kryo = serializePool.obtain();
+    protected byte[] serialize(E e) {
+       /*Kryo kryo = serializePool.obtain();
        byte[] buff = null;
        try {
            ByteArrayOutputStream baos  = new ByteArrayOutputStream();
@@ -182,13 +154,14 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
            buff = baos.toByteArray();
        }finally {
            serializePool.free(kryo);
-       }
-       return buff;
+       }*/
+        byte[] buff = serializer.serialize(e);
+        return buff;
     }
 
-    protected E deserialize(byte[] buff){
-       E e = null;
-       if (buff != null && buff.length > 0) {
+    protected E deserialize(byte[] buff) {
+        E e = null;
+       /*if (buff != null && buff.length > 0) {
            Kryo kryo = deserializePool.obtain();
            try {
                Input input = new Input(buff);
@@ -196,11 +169,12 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
            } finally {
                deserializePool.free(kryo);
            }
-       }
+       }*/
+        e = serializer.deserialize(buff);
         return e;
     }
 
-    protected final class PersistentQueueIterator implements Iterator<E>{
+    protected final class PersistentQueueIterator implements Iterator<E> {
 
         Iterator<byte[]> it = segmentIndexer.iterator();
 
