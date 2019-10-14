@@ -198,6 +198,9 @@ public class StorageSegmentManager {
         CacheValue cacheValue = cache.get(segmentId);
         if (cacheValue != null) {
             cacheValue.storageSegment.setDelete(true);
+            List<StorageSegment> closeSegments = new ArrayList<>();
+            closeSegments.add(cacheValue.storageSegment);
+            executorService.submit(new CleanupTask(closeSegments));
         }
     }
 
@@ -211,7 +214,7 @@ public class StorageSegmentManager {
         }
 
         private boolean isExpired(long currentTime) {
-            return refCount.get() <= 0 && (currentTime > (lastAccessTime + ttl) && storageSegment.isDelete());
+            return storageSegment.isDelete() || (refCount.get() <= 0 && (currentTime > (lastAccessTime + ttl)));
         }
     }
 
@@ -241,11 +244,13 @@ public class StorageSegmentManager {
             String derivedName = "cleaner-" + ext.replace(".", "").trim();
             Thread.currentThread().setName(derivedName);
             try {
+                //Before delete wait for few secs
+                PersistentUtil.sleep(1500);
                 if (!closeSegments.isEmpty()) {
                     for (StorageSegment tempSegment : closeSegments) {
                         logger.debug("Cleanup in progress for segment [ ext:" + tempSegment.getExtension() +
                                 ", id:" + tempSegment.getSegmentId() + ", delete:" + tempSegment.isDelete() + "]");
-                        if (!tempSegment.isClosed() && tempSegment.isDelete()) {
+                        if (!tempSegment.isClosed()) {
                             tempSegment.close();
                         }
                         cache.remove(tempSegment.getSegmentId());

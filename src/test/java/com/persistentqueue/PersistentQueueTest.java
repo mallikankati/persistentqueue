@@ -219,7 +219,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
         boolean loadTest = false;
         try {
             int loopCount = 1;
-            int totalElements = 10000;
+            int totalElements = 100000;
             if (loadTest){
                 loopCount = 1000;
                 totalElements = 1000000;
