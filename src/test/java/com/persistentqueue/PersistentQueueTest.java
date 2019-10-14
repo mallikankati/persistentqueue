@@ -6,6 +6,10 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Externalizable;
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -19,7 +23,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
 
     private static final Logger logger = LoggerFactory.getLogger(PersistentQueueTest.class);
 
-    private <T> PersistentQueue<T> getPersistentQueue(Class<T> typeClass) {
+    private <T> PersistentQueue<T> getPersistentQueue() {
         /*PersistentQueue<T> pq = new PersistentQueueBuilder<T>()
                 .with($ -> {
                     $.path = this.path;
@@ -33,20 +37,19 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
                 .path(this.path)
                 .name(this.name)
                 .fileSize(this.initialSize)
-                .typeClass(typeClass)
                 .build();
         return pq;
     }
 
     @Test
     public void testBuilder() {
-        PersistentQueue<String> pq = getPersistentQueue(String.class);
+        PersistentQueue<String> pq = getPersistentQueue();
         pq.close();
     }
 
     @Test
     public void testAddWithString() {
-        PersistentQueue<String> pq = getPersistentQueue(String.class);
+        PersistentQueue<String> pq = getPersistentQueue();
         try {
             String prefix = oneKBText;
             int totalElements = 10;
@@ -75,7 +78,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
 
     @Test
     public void testAddWithInteger() {
-        PersistentQueue<Integer> pq = getPersistentQueue(Integer.class);
+        PersistentQueue<Integer> pq = getPersistentQueue();
         try {
             int totalElements = 10;
             for (int i = 0; i < totalElements; i++) {
@@ -101,7 +104,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
     //TODO this needs be tested
     public void testAddWithListOfStrings() {
         //PersistentQueue<List<String>> pq = getPersistentQueue((Class<List<String>>)new ArrayList<String>().getClass());
-        PersistentQueue<Object> pq = getPersistentQueue(Object.class);
+        PersistentQueue<Object> pq = getPersistentQueue();
         try {
             List<String> list = new ArrayList<>();
             list.add("string 1");
@@ -128,7 +131,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
 
     @Test
     public void testRemove() {
-        PersistentQueue<Integer> pq = getPersistentQueue(Integer.class);
+        PersistentQueue<Integer> pq = getPersistentQueue();
         try {
             int totalElements = 10;
             for (int i = 0; i < totalElements; i++) {
@@ -164,7 +167,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
 
     @Test
     public void testClear() {
-        PersistentQueue<Integer> pq = getPersistentQueue(Integer.class);
+        PersistentQueue<Integer> pq = getPersistentQueue();
         try {
             int totalElements = 10;
             for (int i = 0; i < totalElements; i++) {
@@ -189,7 +192,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
 
     @Test
     public void testAddAllWithString() {
-        PersistentQueue<String> pq = getPersistentQueue(String.class);
+        PersistentQueue<String> pq = getPersistentQueue();
         try {
             int totalElements = 1000;
             List<String> list = new ArrayList<>();
@@ -212,7 +215,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
     public void testAddWith1KBString() {
         int originalSize = this.initialSize;
         this.initialSize = 64*1024*1024;
-        PersistentQueue<String> pq = getPersistentQueue(String.class);
+        PersistentQueue<String> pq = getPersistentQueue();
         boolean loadTest = false;
         try {
             int loopCount = 1;
@@ -252,9 +255,9 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
     @Test
     public void testAddAllWithInteger() {
         //this.initialSize = 2*1024*1024;
-        PersistentQueue<Integer> pq = getPersistentQueue(Integer.class);
+        PersistentQueue<Integer> pq = getPersistentQueue();
         try {
-            int totalElements = 600000;
+            int totalElements = 250000;
             logger.info("Total elements :" + totalElements);
             List<Integer> list = new ArrayList<>();
             for (int i = 0; i < totalElements; i++) {
@@ -282,7 +285,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
     public void testIterator() {
         int originalSize = this.initialSize;
         this.initialSize = 5 * 1024 * 1024;
-        PersistentQueue<Integer> pq = getPersistentQueue(Integer.class);
+        PersistentQueue<Integer> pq = getPersistentQueue();
         try {
             int totalElements = 1000000;
             logger.info("Total elements :" + totalElements);
@@ -343,7 +346,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
 
     @Test
     public void testCustomObjects() {
-        PersistentQueue<Record> pq = getPersistentQueue(Record.class);
+        PersistentQueue<Record> pq = getPersistentQueue();
         try {
             int totalElements = 10000;
             for (int i = 0; i < totalElements; i++) {
@@ -362,11 +365,14 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
         }
     }
 
-    private static class Record {
+    private static class Record implements Externalizable {
         private String name;
         private int value;
         private List<String> list = new ArrayList<>();
         private Map<String, String> map = new HashMap<>();
+        private ChildRecord childRecord;
+        public Record(){
+        }
 
         static Record createRecord(int index) {
             Record r = new Record();
@@ -380,6 +386,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
             map.put("Key" + index, "Value" + index);
             map.put("Key" + index + 1, "Value" + index + 1);
             r.map = map;
+            r.childRecord = ChildRecord.createChildRecord("child1",1);
             return r;
         }
 
@@ -407,6 +414,51 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
                 }
             }
             return true;
+        }
+
+        @Override
+        public void writeExternal(ObjectOutput out) throws IOException {
+            out.writeObject(this.name);
+            out.writeInt(value);
+            out.writeObject(this.list);
+            out.writeObject(map);
+            out.writeObject(childRecord);
+        }
+
+        @Override
+        public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+            this.name = (String)in.readObject();
+            this.value = in.readInt();
+            this.list = (List<String>)in.readObject();
+            this.map = (Map<String, String>)in.readObject();
+            this.childRecord = (ChildRecord)in.readObject();
+        }
+    }
+
+    private static class ChildRecord implements Externalizable{
+        private String childName;
+        private int childValue;
+
+        public ChildRecord(){
+        }
+
+        private static ChildRecord createChildRecord(String name, int value){
+            ChildRecord cr = new ChildRecord();
+            cr.childName = name;
+            cr.childValue = value;
+            return cr;
+        }
+
+        @Override
+        public void writeExternal(ObjectOutput out) throws IOException {
+            out.writeObject(this.childName);
+            out.writeInt(this.childValue);
+        }
+
+        @Override
+        public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+            this.childName = (String)in.readObject();
+            this.childValue = in.readInt();
         }
     }
 }
