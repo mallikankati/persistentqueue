@@ -219,7 +219,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
         boolean loadTest = false;
         try {
             int loopCount = 1;
-            int totalElements = 100000;
+            int totalElements = 10000;
             if (loadTest){
                 loopCount = 1000;
                 totalElements = 1000000;
@@ -257,7 +257,7 @@ public class PersistentQueueTest extends AbstractBaseStorageTest {
         //this.initialSize = 2*1024*1024;
         PersistentQueue<Integer> pq = getPersistentQueue();
         try {
-            int totalElements = 250000;
+            int totalElements = 25000;
             logger.info("Total elements :" + totalElements);
             List<Integer> list = new ArrayList<>();
             for (int i = 0; i < totalElements; i++) {
