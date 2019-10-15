@@ -24,7 +24,7 @@ public class StorageSegmentManagerTest extends AbstractBaseStorageTest{
         System.out.println("Index page size in bytes: " + ((1<<indexItemBytes)*(1<<indexBits)));
         AtomicLong pageIndex = new AtomicLong(0);
         //for (int i = 0; i < ((1<<indexBits) +2); i++) {
-             for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 20; i++) {
             long tempIndex = pageIndex.get();
             System.out.println("i:" + i + ", index  :" + (tempIndex >> indexBits));
             System.out.println("i:" + i + ", offset :" + ((tempIndex - ((tempIndex>>indexBits) << indexBits)) << indexItemBytes));
