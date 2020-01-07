@@ -6,6 +6,7 @@ import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Abstract implementation of StorageSegment
@@ -37,6 +38,8 @@ public abstract class AbstractStorageSegment implements StorageSegment {
     protected boolean open = false;
 
     protected boolean delete = false;
+
+    protected AtomicBoolean readWriteStatus = new AtomicBoolean(false);
 
     protected RandomAccessFile initializeFile(String path, String name, String ext,
                                               int segmentId, int initialLength) throws IOException {
@@ -107,5 +110,14 @@ public abstract class AbstractStorageSegment implements StorageSegment {
     @Override
     public int getSegmentId() {
         return this.segmentId;
+    }
+
+    @Override
+    public boolean isReadOrWriteInProgress(){
+        return readWriteStatus.get();
+    }
+
+    public void setReadWriteStatus(boolean status){
+        readWriteStatus.set(status);
     }
 }

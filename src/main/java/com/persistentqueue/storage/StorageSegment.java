@@ -39,6 +39,20 @@ public interface StorageSegment extends Closeable {
     boolean isClosed();
 
     /**
+     * At any given time is there any action on this segment. While cleanup time it will help
+     *
+     * @return
+     */
+    boolean isReadOrWriteInProgress();
+
+    /**
+     * Set status of read/write on this segment
+     *
+     * @param status
+     */
+    void setReadWriteStatus(boolean status);
+
+    /**
      * To initialize a segment with specified name and length
      *
      * @param path          initial file path

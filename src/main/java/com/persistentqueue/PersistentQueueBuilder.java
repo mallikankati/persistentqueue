@@ -7,6 +7,8 @@ public class PersistentQueueBuilder<T> {
     private String name;
     private int fileSize = 5*1024*1024; //default set to 5MB file
     private boolean blocking = false;
+    private boolean cleanStorageOnRestart = true;
+
     //private Class<T> typeClass;
     private StorageSegment.SegmentType segmentType;
     private PersistentQueueSerializer<T> serializer;
@@ -23,6 +25,11 @@ public class PersistentQueueBuilder<T> {
 
     public PersistentQueueBuilder<T> fileSize(int fileSize) {
         this.fileSize = fileSize;
+        return this;
+    }
+
+    public  PersistentQueueBuilder<T> cleanStorageOnRestart(boolean cleanStorageOnRestart){
+        this.cleanStorageOnRestart = cleanStorageOnRestart;
         return this;
     }
 
@@ -48,7 +55,7 @@ public class PersistentQueueBuilder<T> {
 
     public PersistentQueue<T> build() {
         PersistentQueue<T> pq = null;
-        pq = new PersistentQueue<>(this.path, this.name, this.fileSize);
+        pq = new PersistentQueue<>(this.path, this.name, this.fileSize, this.cleanStorageOnRestart);
         pq.init(this.segmentType, this.serializer);
         return pq;
     }
@@ -69,7 +76,7 @@ public class PersistentQueueBuilder<T> {
 
         public PersistentBlockingQueue<T> build() {
             PersistentBlockingQueue<T> pbq = new PersistentBlockingQueue<>(this.pqb.path,
-                    this.pqb.name, this.pqb.fileSize, this.capacity);
+                    this.pqb.name, this.pqb.fileSize, this.capacity, this.pqb.cleanStorageOnRestart);
             pbq.init(this.pqb.segmentType, this.pqb.serializer);
             return pbq;
         }
