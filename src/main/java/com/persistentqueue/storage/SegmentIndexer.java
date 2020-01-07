@@ -307,7 +307,6 @@ public class SegmentIndexer implements Iterable<byte[]> {
     }
 
     public byte[] readFromSegment() {
-        logger.debug("begin readSegment " + mainHeader);
         byte[] buff = null;
         dataReadLock.lock();
         try {
@@ -324,11 +323,11 @@ public class SegmentIndexer implements Iterable<byte[]> {
         } finally {
             dataReadLock.unlock();
         }
-        logger.debug("end readSegment " + mainHeader);
         return buff;
     }
 
     public byte[] readElementFromSegment(long index, boolean markForDelete) {
+        logger.debug("begin readSegment " + mainHeader +", delete:" + markForDelete);
         if (mainHeader.startPosition == mainHeader.tailPosition) {
             return null;
         }
@@ -349,22 +348,11 @@ public class SegmentIndexer implements Iterable<byte[]> {
             } else {
                 dataSegment = dataStorageManager.acquireSegment(dataSegmentId, dataLength);
             }
-            if (printReadSegInfo){
-                logger.debug("read is at [index:" + dataIndexSegmentId +", ioffset:" + dataIndexItemOffset +
-                        ", data:" + dataSegmentId +", doffset:" + dataItemOffset + "]");
+            if (printReadSegInfo) {
+                logger.debug("read is at [index:" + dataIndexSegmentId + ", ioffset:" + dataIndexItemOffset +
+                        ", data:" + dataSegmentId + ", doffset:" + dataItemOffset + "]");
             }
             buff = dataSegment.read(dataItemOffset, 0, dataLength);
-            printReadSegInfo = false;
-            if (previousReadDataIndexSegmentId != dataIndexSegmentId && markForDelete) {
-                dataIndexStorageManager.markForDelete(previousReadDataIndexSegmentId);
-                logger.debug("data index seg to close:" + previousReadDataIndexSegmentId);
-                printReadSegInfo = true;
-            }
-            if (previousReadDataSegmentId != dataSegmentId && markForDelete) {
-                dataStorageManager.markForDelete(previousReadDataSegmentId);
-                logger.debug("data seg to close:" + previousReadDataSegmentId);
-                printReadSegInfo = true;
-            }
             if (markForDelete) {
                 this.startPositionCounter.incrementAndGet();
                 MainHeader mHeader = new MainHeader();
@@ -372,12 +360,26 @@ public class SegmentIndexer implements Iterable<byte[]> {
                 mHeader.tailPosition = mainHeader.tailPosition;
                 writeMetadataHeader(mHeader);
             }
-            previousReadDataIndexSegmentId = dataIndexSegmentId;
-            previousReadDataSegmentId = dataSegmentId;
         } finally {
             dataIndexStorageManager.releaseSegment(dataIndexSegmentId);
             dataStorageManager.releaseSegment(dataSegmentId);
+            printReadSegInfo = false;
+            if (markForDelete) {
+                if (previousReadDataIndexSegmentId != dataIndexSegmentId) {
+                    dataIndexStorageManager.markForDelete(previousReadDataIndexSegmentId);
+                    logger.debug("data index seg to close:" + previousReadDataIndexSegmentId);
+                    printReadSegInfo = true;
+                }
+                if (previousReadDataSegmentId != dataSegmentId) {
+                    dataStorageManager.markForDelete(previousReadDataSegmentId);
+                    logger.debug("data seg to close:" + previousReadDataSegmentId);
+                    printReadSegInfo = true;
+                }
+                previousReadDataIndexSegmentId = dataIndexSegmentId;
+                previousReadDataSegmentId = dataSegmentId;
+            }
         }
+        logger.debug("end readSegment " + mainHeader +", delete:" + markForDelete);
         return buff;
     }
 
