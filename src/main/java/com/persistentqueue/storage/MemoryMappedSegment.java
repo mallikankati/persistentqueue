@@ -14,6 +14,7 @@ import java.nio.channels.FileChannel;
  */
 public class MemoryMappedSegment extends AbstractStorageSegment {
 
+
     /**
      * ThreadLocal MappedByteBuffer backed by this segment
      */
@@ -69,8 +70,7 @@ public class MemoryMappedSegment extends AbstractStorageSegment {
     }
 
     @Override
-    public ByteBuffer getByteBuffer(long position)
-    {
+    public ByteBuffer getByteBuffer(long position) {
         ByteBuffer byteBuffer = this.threadLocalBuffer.get();
         byteBuffer.position((int) position);
         return byteBuffer;

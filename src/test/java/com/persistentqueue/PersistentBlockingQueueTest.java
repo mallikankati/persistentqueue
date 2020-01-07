@@ -41,6 +41,17 @@ public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
         return pq;
     }
 
+    private <T> PersistentBlockingQueue<T> getPersistentQueue(boolean cleanStorageOnRestart) {
+        PersistentBlockingQueue<T> pq = new PersistentQueueBuilder<T>()
+                .path(this.path)
+                .name(this.name)
+                .fileSize(initialSize)
+                .cleanStorageOnRestart(cleanStorageOnRestart)
+                .blocking(true)
+                .build();
+        return pq;
+    }
+
     private ExecutorService threadPool;
 
     @Before
@@ -68,6 +79,38 @@ public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
                 Assert.assertEquals("Multiple peek call returning different results", 0, tempInt);
             }
             Assert.assertEquals("Total size mismatch", numElements, pq.size());
+            for (int i = 0; i < numElements; i++) {
+                int tempInt = pq.poll(1, TimeUnit.SECONDS);
+                Assert.assertEquals("Multiple poll call fails results", i, tempInt);
+            }
+            Assert.assertEquals("Total size mismatch after poll", 0, pq.size());
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            pq.close();
+        }
+    }
+
+    @Test
+    public void testCloseAndOpenAddWithInteger() {
+        PersistentBlockingQueue<Integer> pq = getPersistentQueue(false);
+        try {
+            int numElements = 100;
+            int halfCount = numElements/2;
+            for (int i = 0; i < halfCount; i++) {
+                pq.put(i);
+            }
+            Assert.assertEquals("Total size mismatch", halfCount, pq.size());
+            pq.close();
+            pq = getPersistentQueue();
+            for (int i = 0; i < halfCount; i++) {
+                int tempInt = pq.peek();
+                Assert.assertEquals("Multiple peek call returning different results", 0, tempInt);
+            }
+            Assert.assertEquals("Total size mismatch", halfCount, pq.size());
+            for (int i = 0; i < halfCount; i++) {
+                pq.put((halfCount + i));
+            }
             for (int i = 0; i < numElements; i++) {
                 int tempInt = pq.poll(1, TimeUnit.SECONDS);
                 Assert.assertEquals("Multiple poll call fails results", i, tempInt);
@@ -190,6 +233,14 @@ public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
             this.numElements = numElements;
             this.threadNum = threadNum;
             this.prefix = prefix;
+        }
+
+        Producer(BlockingQueue<T> q, int numElements, int threadNum, String prefix, CountDownLatch latch) {
+            this.q = q;
+            this.numElements = numElements;
+            this.threadNum = threadNum;
+            this.prefix = prefix;
+            this.latch = latch;
         }
 
         @Override

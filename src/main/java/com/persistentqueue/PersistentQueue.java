@@ -77,10 +77,11 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
      */
     protected boolean compress = true;
 
-    public PersistentQueue(String path, String name, int dataSegmentSize) {
+    public PersistentQueue(String path, String name, int dataSegmentSize, boolean cleanStorageOnRestart) {
         this.path = path;
         this.name = name;
         this.dataSegmentSize = dataSegmentSize;
+        this.cleanStorageOnRestart = cleanStorageOnRestart;
     }
 
     public void init(StorageSegment.SegmentType segmentType,

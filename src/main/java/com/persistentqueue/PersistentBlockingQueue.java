@@ -1,6 +1,8 @@
 package com.persistentqueue;
 
 
+import com.persistentqueue.storage.StorageSegment;
+
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.concurrent.BlockingQueue;
@@ -50,8 +52,8 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
     private final Condition notFull = putLock.newCondition();
 
 
-    public PersistentBlockingQueue(String path, String name, int dataSegmentSize) {
-        super(path, name, dataSegmentSize);
+    public PersistentBlockingQueue(String path, String name, int dataSegmentSize, boolean cleanStorageOnRestart) {
+        super(path, name, dataSegmentSize, cleanStorageOnRestart);
     }
 
     /**
@@ -62,14 +64,24 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
      * @param dataSegmentSize each data segment size
      * @param capacity        capacity of this queue
      */
-    public PersistentBlockingQueue(String path, String name, int dataSegmentSize, int capacity) {
-        super(path, name, dataSegmentSize);
+    public PersistentBlockingQueue(String path, String name, int dataSegmentSize, int capacity, boolean cleanStorageOnRestart) {
+        super(path, name, dataSegmentSize, cleanStorageOnRestart);
         if (capacity <= 0) {
             throw new IllegalArgumentException();
         }
         this.capacity = capacity;
     }
 
+    /**
+     * Initializing queue
+     * @param segmentType
+     * @param serializer
+     */
+    public void init(StorageSegment.SegmentType segmentType,
+                     PersistentQueueSerializer<E> serializer) {
+        super.init(segmentType, serializer);
+        this.count.set(super.size());
+    }
     /**
      * Signals a waiting take. Called only from put/offer (which do not
      * otherwise ordinarily lock takeLock.)
@@ -115,7 +127,7 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
 
     @Override
     public int size() {
-        return this.count.get();
+        return super.size();
     }
 
     @Override
