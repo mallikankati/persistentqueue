@@ -1,9 +1,14 @@
 package com.persistentqueue.storage;
 
+import com.persistentqueue.storage.utils.PersistentUtil;
 import org.junit.Assert;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class MemorySegmentTest extends AbstractBaseStorageTest {
+
+    private static final Logger logger = LoggerFactory.getLogger(MemorySegmentTest.class);
 
     @Test
     public void testInit() throws Exception {
@@ -72,6 +77,28 @@ public class MemorySegmentTest extends AbstractBaseStorageTest {
             String tempText = new String(tempBuff);
             Assert.assertEquals("memory mapped file both String should be equal", oneKBText, tempText);
         } catch (Exception e) {
+        } finally {
+            try {
+                segment.setDelete(true);
+                segment.close();
+            } catch (Exception ignore) {
+            }
+        }
+    }
+
+    @Test
+    public void testReadBeforeWrite(){
+        StorageSegment segment = getMemorySegment(0);
+        try {
+            byte[] buff = segment.read(0, 0, 20);
+            logger.info("buff length:" + buff.length);
+            Assert.assertEquals("buffer length mismatch", 20, buff.length);
+            long startPosition = PersistentUtil.readLong(buff, 4);
+            long tailPosition  = PersistentUtil.readLong(buff, 12);
+            Assert.assertEquals("start position should be zero", 0, startPosition);
+            Assert.assertEquals("tail position should be zero", 0, tailPosition);
+        } catch (Exception e) {
+            logger.info(e.getMessage(), e);
         } finally {
             try {
                 segment.setDelete(true);

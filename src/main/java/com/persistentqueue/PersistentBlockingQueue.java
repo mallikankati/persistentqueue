@@ -1,6 +1,8 @@
 package com.persistentqueue;
 
 
+import com.persistentqueue.storage.StorageSegment;
+
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.concurrent.BlockingQueue;
@@ -50,8 +52,8 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
     private final Condition notFull = putLock.newCondition();
 
 
-    public PersistentBlockingQueue(String path, String name, int dataSegmentSize) {
-        super(path, name, dataSegmentSize);
+    public PersistentBlockingQueue(String path, String name, int dataSegmentSize, boolean cleanStorageOnRestart) {
+        super(path, name, dataSegmentSize, cleanStorageOnRestart);
     }
 
     /**
@@ -62,12 +64,24 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
      * @param dataSegmentSize each data segment size
      * @param capacity        capacity of this queue
      */
-    public PersistentBlockingQueue(String path, String name, int dataSegmentSize, int capacity) {
-        super(path, name, dataSegmentSize);
+    public PersistentBlockingQueue(String path, String name, int dataSegmentSize, int capacity, boolean cleanStorageOnRestart) {
+        super(path, name, dataSegmentSize, cleanStorageOnRestart);
         if (capacity <= 0) {
             throw new IllegalArgumentException();
         }
         this.capacity = capacity;
+    }
+
+    /**
+     * Initializing queue
+     *
+     * @param segmentType
+     * @param serializer
+     */
+    public void init(StorageSegment.SegmentType segmentType,
+                     PersistentQueueSerializer<E> serializer) {
+        super.init(segmentType, serializer);
+        this.count.set(super.size());
     }
 
     /**
@@ -115,7 +129,7 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
 
     @Override
     public int size() {
-        return this.count.get();
+        return super.size();
     }
 
     @Override
@@ -352,6 +366,36 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
         return i;
     }
 
+    public int drainTo(Collection<? super E> c, int maxElements, long index) {
+        if (c == null) {
+            throw new NullPointerException();
+        }
+        if (c == this) {
+            throw new IllegalArgumentException();
+        }
+        if (maxElements <= 0) {
+            return 0;
+        }
+        final ReentrantLock takeLock = this.takeLock;
+        takeLock.lock();
+        boolean signalNotFull = false;
+        int i = 0;
+        try {
+            //int n = Math.min(count.get(), maxElements);
+            while (i < maxElements) {
+                E e = super.poll(index + i);
+                c.add(e);
+                i++;
+            }
+        } finally {
+            takeLock.unlock();
+            if (signalNotFull) {
+                signalNotFull();
+            }
+        }
+        return i;
+    }
+
     @Override
     public Iterator<E> iterator() {
         return new BlockingQueueItr();
@@ -384,6 +428,10 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
                 fullyUnlock();
             }
         }
+    }
+
+    public long getStartIndex() {
+        return segmentIndexer.getStartIndex();
     }
 
     @Override

@@ -77,10 +77,11 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
      */
     protected boolean compress = true;
 
-    public PersistentQueue(String path, String name, int dataSegmentSize) {
+    public PersistentQueue(String path, String name, int dataSegmentSize, boolean cleanStorageOnRestart) {
         this.path = path;
         this.name = name;
         this.dataSegmentSize = dataSegmentSize;
+        this.cleanStorageOnRestart = cleanStorageOnRestart;
     }
 
     public void init(StorageSegment.SegmentType segmentType,
@@ -134,6 +135,18 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
     public E peek() {
         long currentStartIndex = segmentIndexer.getStartIndex();
         byte[] buff = segmentIndexer.readElementFromSegment(currentStartIndex, false);
+        E e = deserialize(buff);
+        return e;
+    }
+
+    /**
+     * Customized poll to read older elements.
+     *
+     * @param index
+     * @return
+     */
+    public E poll(long index) {
+        byte[] buff = segmentIndexer.readElementFromSegment(index, false);
         E e = deserialize(buff);
         return e;
     }
