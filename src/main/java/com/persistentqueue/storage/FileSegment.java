@@ -1,6 +1,9 @@
 package com.persistentqueue.storage;
 
+import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 
 
 /**
@@ -11,11 +14,7 @@ public class FileSegment extends AbstractStorageSegment {
     /**
      * File backed by this segment
      */
-    private RandomAccessFile raf;
-
-    private boolean closed = false;
-
-    private boolean open = false;
+    private FileChannel fileChannel;
 
     public FileSegment() {
     }
@@ -34,7 +33,8 @@ public class FileSegment extends AbstractStorageSegment {
     public void init(String path, String name, String ext, int segmentId, int initialLength) {
         FileSegment fileSegment = null;
         try {
-            raf = initializeFile(path, name, ext, segmentId, initialLength);
+            RandomAccessFile raf = initializeFile(path, name, ext, segmentId, initialLength);
+            fileChannel = raf.getChannel();
             //In case segment cached and close and create again on same instance
             closed = false;
             open = true;
@@ -47,37 +47,38 @@ public class FileSegment extends AbstractStorageSegment {
      * Reading bytes from file
      *
      * @param position
-     * @param buff
-     * @param offset
-     * @param count
      */
-    public void read(long position, byte[] buff, int offset, int count) {
+    @Override
+    public byte[] read(long position, int offset, int count) {
+        byte[] buff = null;
         if (closed) {
             throw new RuntimeException("segment closed before reading");
         }
         try {
-            if (position + count <= initialLength) {
-                raf.seek(position);
-                raf.readFully(buff, offset, count);
-            } else {
-                throw new RuntimeException("Exceeded initial file length to read");
-            }
+            fileChannel.position(position);
+            ByteBuffer buffer = ByteBuffer.allocate(count);
+            do {
+                fileChannel.read(buffer);
+            } while (buffer.hasRemaining());
+            buff = buffer.array();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+        return buff;
     }
 
     /**
      * @param position
      * @param buff
-     * @param offset
-     * @param count
      */
-    public void write(long position, byte[] buff, int offset, int count) {
+    public void write(long position, byte[] buff) {
         try {
-            if (raf != null && position + count <= initialLength) {
-                raf.seek(position);
-                raf.write(buff, offset, count);
+            if (fileChannel != null && position + buff.length <= initialLength) {
+                fileChannel.position(position);
+                ByteBuffer buffer = ByteBuffer.wrap(buff);
+                do {
+                    fileChannel.write(buffer);
+                } while (buffer.hasRemaining());
             } else {
                 throw new RuntimeException("Exceeded initial file length to write");
             }
@@ -87,13 +88,19 @@ public class FileSegment extends AbstractStorageSegment {
     }
 
     @Override
+    public ByteBuffer getByteBuffer(long position) {
+        ByteBuffer byteBuffer = null;
+        return byteBuffer;
+    }
+
+    @Override
     public boolean isSpaceAvailable(int dataLength) {
         boolean status = false;
         try {
             if (closed) {
                 throw new RuntimeException("segment closed");
             }
-            if (raf.getFilePointer() + dataLength <= initialLength) {
+            if (fileChannel.position() + dataLength <= initialLength) {
                 status = true;
             }
         } catch (Exception e) {
@@ -105,8 +112,8 @@ public class FileSegment extends AbstractStorageSegment {
     @Override
     public void seekToPosition(int position) {
         try {
-            raf.seek(position);
-        }catch (Exception e){
+            fileChannel.position(position);
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
@@ -115,7 +122,7 @@ public class FileSegment extends AbstractStorageSegment {
     public int getCurrentPosition() {
         int pointer = 0;
         try {
-            pointer = (int)raf.getFilePointer();
+            pointer = (int) fileChannel.position();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -133,22 +140,30 @@ public class FileSegment extends AbstractStorageSegment {
         return remaining;
     }
 
+    @Override
+    public boolean isDelete() {
+        return this.delete;
+    }
+
+    @Override
+    public void setDelete(boolean delete) {
+        this.delete = delete;
+    }
+
     /**
      * Closes open file
-     *
-     * @param delete If this flag is true, underneath file get deleted from the disk
      */
     @Override
-    public void close(boolean delete) {
+    public void close() throws IOException {
         try {
             if (isOpen()) {
-                if (raf != null) {
-                    raf.close();
+                if (fileChannel != null) {
+                    fileChannel.close();
                     closed = true;
                 }
                 open = false;
             }
-            if (delete) {
+            if (isDelete()) {
                 deleteFile();
             }
         } catch (Exception e) {
