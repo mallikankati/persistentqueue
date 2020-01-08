@@ -124,6 +124,40 @@ public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
     }
 
     @Test
+    public void testCustomIndexDrainTo(){
+        PersistentBlockingQueue<Integer> pq = getPersistentQueue();
+        try {
+            int numElements = 100;
+            for (int i = 0; i < numElements; i++) {
+                pq.put(i);
+            }
+            Assert.assertEquals("Total size mismatch", numElements, pq.size());
+            int halfCount = numElements/2;
+            for (int i = 0; i < halfCount; i++) {
+                int tempInt = pq.poll();
+                Assert.assertEquals("Multiple poll call fails results", i, tempInt);
+            }
+            List<Integer> list = new ArrayList<>();
+            pq.drainTo(list, 10, 5);
+
+            for (int i = 0; i < list.size(); i++) {
+                int tempInt = list.get(i);
+                //logger.info("Read element :" + tempInt);
+                Assert.assertEquals("Custom drainTo failed ", i+5, tempInt);
+            }
+            for (int i = 0; i < halfCount; i++) {
+                int tempInt = pq.poll();
+                logger.info("Read element :" + tempInt);
+                Assert.assertEquals("Multiple poll call fails results", i+halfCount, tempInt);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            pq.close();
+        }
+    }
+
+    @Test
     public void testPutAndDrainWithOneThread() {
         PersistentBlockingQueue<String> pq = getPersistentQueue();
         try {

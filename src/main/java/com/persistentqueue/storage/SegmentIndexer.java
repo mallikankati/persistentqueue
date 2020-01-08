@@ -211,7 +211,7 @@ public class SegmentIndexer implements Iterable<byte[]> {
 
         //calculate index and it's offset from .index file. Data insertion starts from index and offset.
         long index = this.tailPositionCounter.get();
-        if (index != 0){
+        if (index != 0) {
             index--;
         }
         int currentIndexSegmentId = getDataIndexSegmentId(index);
@@ -238,7 +238,7 @@ public class SegmentIndexer implements Iterable<byte[]> {
             //mainHeader.startPosition = startPositionCounter.get();
             //mainHeader.tailPosition = tailPositionCounter.get();
             writeMetadataHeader(mainHeader);
-        }finally {
+        } finally {
             dataIndexStorageManager.releaseSegment(currentIndexSegmentId);
         }
     }
@@ -352,7 +352,7 @@ public class SegmentIndexer implements Iterable<byte[]> {
     }
 
     public byte[] readElementFromSegment(long index, boolean markForDelete) {
-        logger.debug("begin readSegment " + mainHeader +", delete:" + markForDelete);
+        logger.debug("begin readSegment " + mainHeader + ", delete:" + markForDelete);
         if (mainHeader.startPosition == mainHeader.tailPosition) {
             return null;
         }
@@ -404,7 +404,7 @@ public class SegmentIndexer implements Iterable<byte[]> {
                 previousReadDataSegmentId = dataSegmentId;
             }
         }
-        logger.debug("end readSegment " + mainHeader +", delete:" + markForDelete);
+        logger.debug("end readSegment " + mainHeader + ", delete:" + markForDelete);
         return buff;
     }
 

@@ -74,6 +74,7 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
 
     /**
      * Initializing queue
+     *
      * @param segmentType
      * @param serializer
      */
@@ -82,6 +83,7 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
         super.init(segmentType, serializer);
         this.count.set(super.size());
     }
+
     /**
      * Signals a waiting take. Called only from put/offer (which do not
      * otherwise ordinarily lock takeLock.)
@@ -364,6 +366,36 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
         return i;
     }
 
+    public int drainTo(Collection<? super E> c, int maxElements, long index) {
+        if (c == null) {
+            throw new NullPointerException();
+        }
+        if (c == this) {
+            throw new IllegalArgumentException();
+        }
+        if (maxElements <= 0) {
+            return 0;
+        }
+        final ReentrantLock takeLock = this.takeLock;
+        takeLock.lock();
+        boolean signalNotFull = false;
+        int i = 0;
+        try {
+            int n = Math.min(count.get(), maxElements);
+            while (i < n) {
+                E e = super.poll(index + i);
+                c.add(e);
+                i++;
+            }
+        } finally {
+            takeLock.unlock();
+            if (signalNotFull) {
+                signalNotFull();
+            }
+        }
+        return i;
+    }
+
     @Override
     public Iterator<E> iterator() {
         return new BlockingQueueItr();
@@ -396,6 +428,10 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
                 fullyUnlock();
             }
         }
+    }
+
+    public long getStartIndex() {
+        return segmentIndexer.getStartIndex();
     }
 
     @Override

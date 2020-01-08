@@ -139,6 +139,18 @@ public class PersistentQueue<E> extends AbstractQueue<E> implements Closeable, I
         return e;
     }
 
+    /**
+     * Customized poll to read older elements.
+     *
+     * @param index
+     * @return
+     */
+    public E poll(long index) {
+        byte[] buff = segmentIndexer.readElementFromSegment(index, false);
+        E e = deserialize(buff);
+        return e;
+    }
+
     public void clear() {
         segmentIndexer.clear();
     }
