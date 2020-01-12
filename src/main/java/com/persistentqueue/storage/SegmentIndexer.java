@@ -353,9 +353,9 @@ public class SegmentIndexer implements Iterable<byte[]> {
 
     public byte[] readElementFromSegment(long index, boolean markForDelete) {
         logger.debug("begin readSegment " + mainHeader + ", delete:" + markForDelete);
-        if (mainHeader.startPosition == mainHeader.tailPosition) {
+        /*if (mainHeader.startPosition == mainHeader.tailPosition) {
             return null;
-        }
+        }*/
         int dataIndexSegmentId = 0;
         int dataSegmentId = 0;
         byte[] buff = null;
