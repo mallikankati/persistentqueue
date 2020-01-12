@@ -158,6 +158,25 @@ public class PersistentBlockingQueueTest extends AbstractBaseStorageTest {
     }
 
     @Test
+    public void testCustomIndexDrainToWithSingleElement(){
+        PersistentBlockingQueue<Integer> pq = getPersistentQueue();
+        try {
+            int numElements = 100;
+            for (int i = 0; i < numElements; i++) {
+                pq.put(i);
+            }
+            Assert.assertEquals("Total size mismatch", numElements, pq.size());
+            List<Integer> list = new ArrayList<>();
+            pq.drainTo(list, 1, 5);
+            Assert.assertEquals("Retrieved record size mismatch", 1, list.size());
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            pq.close();
+        }
+    }
+
+    @Test
     public void testPutAndDrainWithOneThread() {
         PersistentBlockingQueue<String> pq = getPersistentQueue();
         try {

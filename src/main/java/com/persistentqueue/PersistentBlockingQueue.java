@@ -381,8 +381,8 @@ public class PersistentBlockingQueue<E> extends PersistentQueue<E> implements Bl
         boolean signalNotFull = false;
         int i = 0;
         try {
-            int n = Math.min(count.get(), maxElements);
-            while (i < n) {
+            //int n = Math.min(count.get(), maxElements);
+            while (i < maxElements) {
                 E e = super.poll(index + i);
                 c.add(e);
                 i++;
