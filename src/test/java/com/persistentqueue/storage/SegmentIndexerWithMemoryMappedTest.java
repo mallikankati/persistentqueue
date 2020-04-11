@@ -5,7 +5,7 @@ public class SegmentIndexerWithMemoryMappedTest extends AbstractSegmentIndexerTe
     protected SegmentIndexer getIndexer() {
         SegmentIndexer indexer = new SegmentIndexer();
         indexer.setSegmentType(StorageSegment.SegmentType.MEMORYMAPPED);
-        indexer.initialize(this.path, this.name, this.initialDataFileSize);
+        indexer.initialize(this.path, this.name, this.initialSize);
         return indexer;
     }
 }

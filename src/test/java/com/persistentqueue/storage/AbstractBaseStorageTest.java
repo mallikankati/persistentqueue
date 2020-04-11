@@ -32,14 +32,14 @@ public abstract class AbstractBaseStorageTest {
     protected StorageSegment getFileSegment(int segmentId) {
         StorageSegment segment = null;
         segment = new FileSegment();
-        segment.init(this.path, this.name, this.dataFileExt, segmentId, this.initialDataFileSize);
+        segment.init(this.path, this.name, this.dataFileExt, segmentId, this.initialSize);
         return segment;
     }
 
     protected StorageSegment getMemorySegment(int segmentId) {
         StorageSegment segment = null;
         segment = new MemoryMappedSegment();
-        segment.init(this.path, this.name, this.dataFileExt, segmentId, this.initialDataFileSize);
+        segment.init(this.path, this.name, this.dataFileExt, segmentId, this.initialSize);
         return segment;
     }
 }
