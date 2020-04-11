@@ -1,9 +1,14 @@
 package com.persistentqueue.storage;
 
+import com.persistentqueue.storage.utils.PersistentUtil;
 import org.junit.Assert;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class MemorySegmentTest extends AbstractBaseStorageTest {
+
+    private static final Logger logger = LoggerFactory.getLogger(MemorySegmentTest.class);
 
     @Test
     public void testInit() throws Exception {
@@ -13,7 +18,7 @@ public class MemorySegmentTest extends AbstractBaseStorageTest {
             Assert.assertEquals("memory mapped file path mismatch", this.path, segment.getPath());
             Assert.assertEquals("memory mapped file name mismatch", this.name, segment.getName());
             Assert.assertEquals("memory mapped file extension mismatch", this.dataFileExt, segment.getExtension());
-            Assert.assertEquals("memory mapped file initial size mismatch", this.initialSize, segment.getLength());
+            Assert.assertEquals("memory mapped file initial size mismatch", this.initialDataFileSize, segment.getLength());
             Assert.assertEquals("memory mapped Segment id mismatch", 0, segment.getSegmentId());
             Assert.assertEquals("memory mapped file current position mismatch", 0, segment.getCurrentPosition());
             Assert.assertEquals("memory mapped file Remaining size mismatch", this.initialSize, segment.remaining(0));
@@ -34,8 +39,8 @@ public class MemorySegmentTest extends AbstractBaseStorageTest {
             segment.write(0, buff);
             int length = buff.length;
             byte[] tempBuff = new byte[length];
-            Assert.assertEquals("memory mapped file remaining space mismatch after write", (this.initialSize - length), segment.remaining(length));
-            Assert.assertEquals("memory mapped file remaining space should match to total space", (this.initialSize), segment.remaining(0));
+            Assert.assertEquals("memory mapped file remaining space mismatch after write", (this.initialDataFileSize - length), segment.remaining(length));
+            Assert.assertEquals("memory mapped file remaining space should match to total space", (this.initialDataFileSize), segment.remaining(0));
             //TODO need to fix this check
             // Assert.assertEquals("memory mapped file current position mismatch", length, segment.getCurrentPosition());
             Assert.assertEquals("memory mapped file Space Available should return true", true, segment.isSpaceAvailable(length));
@@ -61,8 +66,8 @@ public class MemorySegmentTest extends AbstractBaseStorageTest {
             segment.close();
             segment = getMemorySegment(0);
             segment.seekToPosition(length);
-            Assert.assertEquals("memory mapped file remaining space mismatch after write", (this.initialSize - length), segment.remaining(length));
-            Assert.assertEquals("memory mapped file remaining space should match to total space", (this.initialSize), segment.remaining(0));
+            Assert.assertEquals("memory mapped file remaining space mismatch after write", (this.initialDataFileSize - length), segment.remaining(length));
+            Assert.assertEquals("memory mapped file remaining space should match to total space", (this.initialDataFileSize), segment.remaining(0));
             //TODO need to fix this
             //Assert.assertEquals("memory mapped file current position mismatch", length, segment.getCurrentPosition());
             Assert.assertEquals("memory mapped file space Available should return true", true, segment.isSpaceAvailable(length));
@@ -72,6 +77,28 @@ public class MemorySegmentTest extends AbstractBaseStorageTest {
             String tempText = new String(tempBuff);
             Assert.assertEquals("memory mapped file both String should be equal", oneKBText, tempText);
         } catch (Exception e) {
+        } finally {
+            try {
+                segment.setDelete(true);
+                segment.close();
+            } catch (Exception ignore) {
+            }
+        }
+    }
+
+    @Test
+    public void testReadBeforeWrite(){
+        StorageSegment segment = getMemorySegment(0);
+        try {
+            byte[] buff = segment.read(0, 0, 20);
+            logger.info("buff length:" + buff.length);
+            Assert.assertEquals("buffer length mismatch", 20, buff.length);
+            long startPosition = PersistentUtil.readLong(buff, 4);
+            long tailPosition  = PersistentUtil.readLong(buff, 12);
+            Assert.assertEquals("start position should be zero", 0, startPosition);
+            Assert.assertEquals("tail position should be zero", 0, tailPosition);
+        } catch (Exception e) {
+            logger.info(e.getMessage(), e);
         } finally {
             try {
                 segment.setDelete(true);

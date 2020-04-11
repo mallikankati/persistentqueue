@@ -2,12 +2,16 @@ package com.persistentqueue.storage;
 
 import org.junit.Assert;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ConcurrentModificationException;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
 public abstract class AbstractSegmentIndexerTest extends AbstractBaseStorageTest {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(AbstractBaseStorageTest.class);
 
     protected abstract SegmentIndexer getIndexer();
 
@@ -296,6 +300,89 @@ public abstract class AbstractSegmentIndexerTest extends AbstractBaseStorageTest
                     prefix);
             Assert.assertEquals("Total elements mismatch after read", 0,
                     indexer.getTotalElements());
+        } finally {
+            indexer.close(true);
+        }
+    }
+
+    @Test
+    public void testCloseAndReopenForRead() {
+        SegmentIndexer indexer = getIndexer();
+        String prefix = "This is a test message to verify multiple reads ";
+        int totalElements = 100;
+        try {
+            byte[] buff = null;
+            for (int i = 0; i < totalElements; i++) {
+                String temp = prefix + i;
+                buff = temp.getBytes();
+                indexer.writeToSegment(buff);
+            }
+            Assert.assertEquals("Total elements mismatch after " + totalElements + " write", totalElements,
+                    indexer.getTotalElements());
+            int readCount = totalElements/2;
+            for (int i = 0; i < readCount; i++) {
+                String temp = prefix + i;
+                buff = indexer.readFromSegment();
+                String tempReadStr = new String(buff);
+                Assert.assertEquals("Expected string not matched", temp, tempReadStr);
+                int totalElementsAfterRead = totalElements - i - 1;
+                Assert.assertEquals("Total elements mismatch after " + i + " read", totalElementsAfterRead,
+                        indexer.getTotalElements());
+            }
+            indexer.close(false);
+            indexer = getIndexer();
+            Assert.assertEquals("Total elements mismatch after close and reopen", readCount,
+                    indexer.getTotalElements());
+            for (int i = 0; i < readCount; i++) {
+                String temp = prefix + (readCount + i);
+                buff = indexer.readFromSegment();
+                String tempReadStr = new String(buff);
+                Assert.assertEquals("Expected string not matched", temp, tempReadStr);
+                int totalElementsAfterRead = readCount - i - 1;
+                Assert.assertEquals("Total elements mismatch after " + i + " read", totalElementsAfterRead,
+                        indexer.getTotalElements());
+            }
+        } finally {
+            indexer.close(true);
+        }
+    }
+
+    @Test
+    public void testCloseAndReopenForWrite() {
+        SegmentIndexer indexer = getIndexer();
+        String prefix = "This is a test message to verify multiple reads ";
+        int totalElements = 100;
+        try {
+            byte[] buff = null;
+            int halfCount = totalElements/2;
+            for (int i = 0; i < halfCount; i++) {
+                String temp = prefix + i;
+                buff = temp.getBytes();
+                indexer.writeToSegment(buff);
+            }
+            Assert.assertEquals("Total elements mismatch after " + halfCount + " write", halfCount,
+                    indexer.getTotalElements());
+            indexer.close(false);
+            indexer = getIndexer();
+            Assert.assertEquals("Total elements mismatch after close and reopen", halfCount,
+                    indexer.getTotalElements());
+            for (int i = 0; i < halfCount; i++) {
+                String temp = prefix + (halfCount + i);
+                buff = temp.getBytes();
+                indexer.writeToSegment(buff);
+            }
+            Assert.assertEquals("Total elements mismatch after close, reopen and write ", totalElements,
+                    indexer.getTotalElements());
+            for (int i = 0; i < totalElements; i++) {
+                String temp = prefix + i;
+                buff = indexer.readFromSegment();
+                String tempReadStr = new String(buff);
+                LOGGER.debug(tempReadStr);
+                Assert.assertEquals("Expected string not matched", temp, tempReadStr);
+                int totalElementsAfterRead = totalElements - i - 1;
+                Assert.assertEquals("Total elements mismatch after " + i + " read", totalElementsAfterRead,
+                        indexer.getTotalElements());
+            }
         } finally {
             indexer.close(true);
         }
