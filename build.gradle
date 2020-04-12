@@ -31,10 +31,10 @@ publishing {
     repositories {
         maven {
             credentials {
-                username uploadRepoUsername
-                password uploadRepoPassword
+                username = System.getenv("GITHUB_ACTOR")
+                password = System.getenv("GITHUB_TOKEN")
             }
-            url = version.contains('SNAPSHOT') ? uploadRepoSnapshotUrl : uploadRepoReleaseUrl
+            url = uploadRepoReleaseUrl
         }
     }
     publications {
