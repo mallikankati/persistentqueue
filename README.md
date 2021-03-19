@@ -12,8 +12,8 @@ These kind of queue used when it require
 ```java
 public class PersistentBlockingQueueTest {
 
-public static void main(String[] args){
-PersistentBlockingQueue<Integer> pq = new PersistentQueueBuilder<Integer>()
+     public static void main(String[] args){
+        PersistentBlockingQueue<Integer> pq = new PersistentQueueBuilder<Integer>()
                 .path("valid directory")
                 .name("name without space")
                 .fileSize(134217728) //128MB 
@@ -49,7 +49,7 @@ PersistentBlockingQueue<Integer> pq = new PersistentQueueBuilder<Integer>()
         } finally {
             pq.close();
         }
-}
+     }
      private class Producer<T> implements Callable<Void> {
         int numElements;
         BlockingQueue<T> q;
