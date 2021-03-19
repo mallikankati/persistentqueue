@@ -1,4 +1,6 @@
-Memorymapped persistent queue which implements BlockingQueue interface in java.
+## Diskbacked BlockingQueue
+
+Diskbacked persistent queue which implements BlockingQueue interface in java. It takes leverage of java MemoryMapped files.
 
 Sample example to use
 
