@@ -1,8 +1,8 @@
-## Diskbacked BlockingQueue
+## Diskbacked Queue
 
 Diskbacked persistent queue which implements BlockingQueue interface in java. It takes leverage of java MemoryMapped files.
 
-Sample example to use
+### Sample code to use BlockingQueue
 
 ```java
 PersistentBlockingQueue<Integer> pq = new PersistentQueueBuilder<Integer>()
@@ -34,3 +34,34 @@ try {
 }
 
 ``` 
+
+### Sample code to use without Blocking
+```
+ PersistentQueue<T> pq = new PersistentQueueBuilder<T>()
+                .path(this.path)
+                .name(this.name)
+                .fileSize(this.initialSize)
+                .build();
+   try {
+    int numElements = 10;
+    for (int i = 0; i < numElements; i++) {
+        pq.put(i);
+    }
+    Assert.assertEquals("Total size mismatch", numElements, pq.size());
+    for (int i = 0; i < numElements; i++) {
+        int tempInt = pq.peek();
+        Assert.assertEquals("Multiple peek call returning different results", 0, tempInt);
+    }
+    Assert.assertEquals("Total size mismatch", numElements, pq.size());
+    for (int i = 0; i < numElements; i++) {
+        int tempInt = pq.poll(1, TimeUnit.SECONDS);
+        Assert.assertEquals("Multiple poll call fails results", i, tempInt);
+    }
+    Assert.assertEquals("Total size mismatch after poll", 0, pq.size());
+} catch (Exception e) {
+    e.printStackTrace();
+} finally {
+    pq.close();
+}
+            
+```
