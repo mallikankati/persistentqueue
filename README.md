@@ -1,7 +1,12 @@
 ## Diskbacked Queue
 
-Diskbacked persistent queue which implements BlockingQueue interface in java. It takes leverage of java MemoryMapped files.
+Diskbacked persistent queue which implements BlockingQueue interface in java. It leverage MemoryMapped files to receive the best performance.
 
+These kind of queue used when it require
+   - Low heap memory foot prints, when item stored in queue which stores in memorymapped file backed by disk.
+   - Don't lose any events which stored in memory. When events stored in java.util.Queue<>, events get lost on reboot. PersistentQueue will preserve the insertion order with no loss of data.
+   - It's a library not require any big distributed messaging like kafka infrastructure. This is not a distributed PersistentQueue, which works in only one JVM
+   
 ### Sample code to use BlockingQueue
 
 ```java
