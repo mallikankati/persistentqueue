@@ -70,3 +70,6 @@ try {
 }
             
 ```
+NOTE: 
+  1. Part of this implementation I googled many places to get the desired need but I didn't find single implementation. Bits and pieces available in many places. If I copy any one of your code, please feel free to take credit. I didn't remember all the sites which I browsed while implementing. I really apologize if I don't mention your name.
+  2. Also when I implemented there was a urgent need in current company which created some shortcuts in clean interfaces and readability of the code.
